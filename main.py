@@ -3,8 +3,7 @@ import torch
 import random
 import numpy as np
 import pandas as pd
-from torch_geometric.data import HeteroData
-from src.models.GNN import HANLayer
+from src.models.model import GruHANModel
 from src.utils.utils import HeteroDataset
 from data.load_data import load_water_data,build_edge_index_dict
 from data.process import get_windows
@@ -51,14 +50,15 @@ freq = '4h'
 
 
 dir_wq_x = {
+
     "x_pet": os.path.join(dir_WQ, 'input_xforce_pet.csv'),
     "x_temp": os.path.join(dir_WQ, 'input_xforce_temp.csv'),
     "x_vp": os.path.join(dir_WQ, 'input_xforce_vp.csv'),
-    "x_tp": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
-    "x_do": os.path.join(dir_WQ, 'input_yobs_DO.csv'),
     "x_pre": os.path.join(dir_WQ, 'input_xforce_prcp.csv'),
-    "x_TEMP": os.path.join(dir_WQ, 'input_yobs_temp.csv'),
+    "x_tp": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
     "x_tn": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
+    "x_do": os.path.join(dir_WQ, 'input_yobs_DO.csv'),
+    "x_TEMP": os.path.join(dir_WQ, 'input_yobs_temp.csv'),
     "x_cod": os.path.join(dir_WQ, 'input_yobs_CODMn.csv'),
 }
 dir_wq_y = {
@@ -73,12 +73,14 @@ dir_se_x = {
 dir_info = {
     'city_to_water': os.path.join(dir_info, 'city_to_water.csv'),
     'water_to_water': os.path.join(dir_info, 'water_to_water.csv'),
-    'D_R': os.path.join(dir_info, 'D_R.csv'),
+    'water_points': os.path.join(dir_info, 'water_points.csv'),
+    'city_points': os.path.join(dir_info, 'city_points.csv'),
+    'Date_Range': os.path.join(dir_info, 'D_R.csv'),
 }
 
 num_cities = 28
 num_water_nodes = 14
-D_R = pd.read_csv(dir_info['D_R'])
+D_R = pd.read_csv(dir_info['Date_Range'])
 start_date = D_R['start'].min()
 end_date = D_R['end'].max()
 full_date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
@@ -93,36 +95,27 @@ val_ratio = 0.2
 Sample_data,data_splits, masks, train_stats=get_windows(X,Y,train_ratio,val_ratio,
                                                         hyper_params['history_len'],
                                                         hyper_params['pred_len'])
-train_dataset = HeteroDataset(
+Train = HeteroDataset(
     Sample_data['train_x'],
     Sample_data['train_y'],
     train_x_city_seq,
-    edge_index_dict=edge_index_dict # 传入你最初构建图的拓扑字典
+    x_city_static,
+    edge_index_dict=edge_index_dict # 图的拓扑字典
 )
-
-# 初始化异构图数据对象
-data = HeteroData()
-
-# 假设有 10 个城市和 30 个水质节点
-num_cities = 10
-num_water_nodes = 30
-
-# 2. 边索引 (edge_index) - 形状为 [2, num_edges]
-# 城市间的相邻关系 (假设随机生成15条边)
-data['city', 'adjacent', 'city'].edge_index = torch.randint(0, num_cities, (2, 15))
-
-# 水质节点的上下游关系 (假设随机生成40条边)
-data['water', 'flows_to', 'water'].edge_index = torch.randint(0, num_water_nodes, (2, 40))
-
-# 城市包含水质节点的关系
-# 第一行为 city_id, 第二行为 water_id
-edge_city_water = torch.stack([
-    torch.randint(0, num_cities, (50,)),
-    torch.randint(0, num_water_nodes, (50,))
-])
-data['city', 'contains', 'water'].edge_index = edge_city_water
-# 添加反向边
-data['water', 'belongs_to', 'city'].edge_index = edge_city_water.flip([0])
+Val = HeteroDataset(
+    Sample_data['val_x'],
+    Sample_data['val_y'],
+    train_x_city_seq,
+    x_city_static,
+    edge_index_dict=edge_index_dict
+)
+Test = HeteroDataset(
+    Sample_data['test_x'],
+    Sample_data['test_y'],
+    train_x_city_seq,
+    x_city_static,
+    edge_index_dict=edge_index_dict
+)
 
 # 初始化模型: 隐藏层维度 64, 输出维度 1 (如回归预测某项污染指标)
 # 提取模型所需的参数
@@ -132,12 +125,13 @@ in_channels_dict = {
 }
 metadata = data.metadata()
 
-model = HANLayer(in_channels_dict=in_channels_dict,hidden_size=64, out_size=1,metadata=metadata)
+model = GruHANModel(water_dyn_feat,city_dyn_feat,city_static_feat,
+                    hidden_size, output_size, num_layers,pred_len,
+                    drop_rate,metadata)
 
 # 优化器与损失函数 (以回归任务为例)
 optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
 criterion = torch.nn.MSELoss()
-
 
 # 简单训练循环
 model.train()

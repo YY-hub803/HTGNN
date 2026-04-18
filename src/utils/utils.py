@@ -1,12 +1,17 @@
 import torch
 from torch_geometric.data import HeteroData
+from torch.utils.data import Dataset
 
-
-class HeteroDataset(torch.utils.data.Dataset):
-    def __init__(self, x_water_seq, y_water_seq, x_city_seq, edge_index_dict):
+class HeteroDataset(Dataset):
+    def __init__(self, x_water_seq, y_water_seq, x_city_dyn_seq,x_city_static, edge_index_dict):
+        # [Samples, num_sites, seq_len, dyn_features]
         self.x_water = x_water_seq
         self.y_water = y_water_seq
-        self.x_city = x_city_seq
+        # [Samples, num_city, seq_len, dyn_features]
+        self.x_city = x_city_dyn_seq
+        # [num_city, static_features]
+        self.x_city_static = x_city_static
+
         self.edge_index_dict = edge_index_dict
 
     def __len__(self):
@@ -14,12 +19,14 @@ class HeteroDataset(torch.utils.data.Dataset):
 
     def __getitem__(self, idx):
         data = HeteroData()
-        # data['water'].x -> [num_water_nodes, seq_len, features]
+        # data['water'].x -> [num_water, seq_len, features]
         data['water'].x = self.x_water[idx]
         data['water'].y = self.y_water[idx]
 
-        # data['city'].x -> [num_city_nodes, seq_len, features]
-        data['city'].x = self.x_city[idx]
+        # data['city'].x_dyn -> [num_city, seq_len, features]
+        # data['city'].x_static -> [num_city, features]
+        data['city'].x_dyn = self.x_city[idx]
+        data['city'].x_static = self.x_city_static
 
         for edge_type, edge_index in self.edge_index_dict.items():
             data[edge_type].edge_index = edge_index

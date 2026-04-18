@@ -5,7 +5,7 @@ from torch_geometric.nn import HANConv
 
 
 class HANLayer(nn.Module):
-    def __init__(self, in_channels_dict, hidden_size, out_size, metadata,heads=4):
+    def __init__(self, input_size_dict, hidden_size, out_size, metadata,heads=4):
         """
         in_channels_dict: 字典，指定每种节点的输入特征维度，如 {'city': 5, 'water': 8}
         metadata: 图的元信息，格式为 (node_types, edge_types)
@@ -13,7 +13,7 @@ class HANLayer(nn.Module):
         super().__init__()
 
         self.han = HANConv(
-            in_channels=in_channels_dict,
+            in_channels=input_size_dict,
             out_channels=hidden_size,
             metadata=metadata,
             heads=4             # 注意力头数

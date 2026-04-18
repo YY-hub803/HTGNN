@@ -5,7 +5,7 @@
 *.png
 # --- ºöÂÔÎÄ¼ş¼Ğ ----
 .idea/
-data/
+*_data/
 Metrics/
 OutPut*/
 Multi*/
