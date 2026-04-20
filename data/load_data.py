@@ -13,6 +13,11 @@ def load_timeseries(dict_data, num_sites, date_length):
         data_list.append(reshaped_data)
     return np.concatenate(data_list, axis=2)
 
+def load_attribute(dict_data):
+    """Load data from constant attributes"""
+    data_list = [np.loadtxt(path, delimiter=",", skiprows=1) for path in dict_data.values()]
+    return np.concatenate(data_list, axis=1)
+
 def load_water_data(dir_x, dir_y,num_sites, date_length):
     """
     加载并对齐水质节点的特征 (X) 和标签 (Y)
@@ -29,13 +34,13 @@ def load_water_data(dir_x, dir_y,num_sites, date_length):
     print(f"水质节点标签 Y 形状: {Y_water.shape}")
     return X_water, Y_water
 
-def load_soci_data(dir_se,date_length):
-    data_list = [np.loadtxt(path, delimiter=",", skiprows=1) for path in dir_se.values()]
-    c = np.concatenate(data_list, axis=1)[:,np.newaxis,:].repeat(1, date_length, 1)
 
-    return c
-
-
+def load_se_data(dir_x,dir_c,num_sites, date_length):
+    c_dyn = load_timeseries(dir_x, num_sites, date_length)
+    c_static = load_attribute(dir_c)
+    c_dyn = torch.tensor(c_dyn, dtype=torch.float32)
+    c_static = torch.tensor(c_static, dtype=torch.float32)
+    return c_dyn ,c_static
 
 
 

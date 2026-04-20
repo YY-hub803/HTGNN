@@ -3,9 +3,10 @@ import torch
 import random
 import numpy as np
 import pandas as pd
-from src.models.model import GruHANModel
+from src.models import model
+from src.utils import crit
 from src.utils.utils import HeteroDataset
-from data.load_data import load_water_data,build_edge_index_dict
+from data.load_data import load_water_data,load_se_data,build_edge_index_dict
 from data.process import get_windows
 
 
@@ -33,9 +34,20 @@ hyper_params = {
     "drop_rate": 0.3,
     "warmup_epochs":10,
     "base_lr":1e-3,
-    "BACKEND":"GcnLstmModel", # select models    GcnLstmModel/PhysicsSTNNModel
+    "BACKEND":"GruHANModel", # select models    GcnLstmModel/PhysicsSTNNModel
     "lossFun":'MAE'
 }
+BACKEND= hyper_params["BACKEND"]
+
+MODEL_FACTORY = {
+    "GruHANModel": model.GruHANModel,
+}
+Loss_FACTORY = {
+    "MSE": crit.MSELoss,
+    "MAE": crit.MAELoss,
+    "RMSE": crit.RMSELoss,
+}
+
 
 dir_WQ = r"data\WQ_data"
 dir_SE = r"data\SE_data"
@@ -50,11 +62,8 @@ freq = '4h'
 
 
 dir_wq_x = {
-
     "x_pet": os.path.join(dir_WQ, 'input_xforce_pet.csv'),
     "x_temp": os.path.join(dir_WQ, 'input_xforce_temp.csv'),
-    "x_vp": os.path.join(dir_WQ, 'input_xforce_vp.csv'),
-    "x_pre": os.path.join(dir_WQ, 'input_xforce_prcp.csv'),
     "x_tp": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
     "x_tn": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
     "x_do": os.path.join(dir_WQ, 'input_yobs_DO.csv'),
@@ -67,6 +76,9 @@ dir_wq_y = {
 }
 
 dir_se_x = {
+    "x_pre": os.path.join(dir_SE, 'input_xforce_prcp.csv'),
+}
+dir_se_c = {
     "c_all": os.path.join(dir_SE, 'input_c_all.csv'),
 }
 
@@ -87,74 +99,55 @@ full_date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 date_length = len(full_date_range)
 
 X, Y = load_water_data(dir_wq_x,dir_wq_y,num_water_nodes,date_length)
+X_city,X_city_static = load_se_data(dir_se_x,dir_se_c,num_cities,date_length)
 
 edge_index_dict = build_edge_index_dict(dir_info)
 
 train_ratio = 0.6
 val_ratio = 0.2
-Sample_data,data_splits, masks, train_stats=get_windows(X,Y,train_ratio,val_ratio,
+Sample_data,data_splits, train_stats=get_windows(X,Y,X_city,train_ratio,val_ratio,
                                                         hyper_params['history_len'],
                                                         hyper_params['pred_len'])
 Train = HeteroDataset(
     Sample_data['train_x'],
     Sample_data['train_y'],
-    train_x_city_seq,
-    x_city_static,
+    Sample_data['train_x_city'],
+    X_city_static,
     edge_index_dict=edge_index_dict # 图的拓扑字典
 )
 Val = HeteroDataset(
     Sample_data['val_x'],
     Sample_data['val_y'],
-    train_x_city_seq,
-    x_city_static,
+    Sample_data['val_x_city'],
+    X_city_static,
     edge_index_dict=edge_index_dict
 )
 Test = HeteroDataset(
     Sample_data['test_x'],
     Sample_data['test_y'],
-    train_x_city_seq,
-    x_city_static,
+    Sample_data['test_x_city'],
+    X_city_static,
     edge_index_dict=edge_index_dict
 )
+# 所有数据的输入维度与图结构不变
+sample_data = Train[0]
+metadata = sample_data.metadata()
+water_dyn_feat = sample_data['water'].x.shape[-1]
+city_dyn_feat = sample_data['city'].x_dyn.shape[-1]
+city_static_feat = sample_data['city'].x_static.shape[-1]
+print(f"水质动态特征数: {water_dyn_feat}")
+print(f"城市动态特征数: {city_dyn_feat}")
+print(f"城市静态特征数: {city_static_feat}")
 
-# 初始化模型: 隐藏层维度 64, 输出维度 1 (如回归预测某项污染指标)
-# 提取模型所需的参数
-in_channels_dict = {
-    'city': data['city'].x.size(1),
-    'water': data['water'].x.size(1)
-}
-metadata = data.metadata()
-
-model = GruHANModel(water_dyn_feat,city_dyn_feat,city_static_feat,
-                    hidden_size, output_size, num_layers,pred_len,
-                    drop_rate,metadata)
-
-# 优化器与损失函数 (以回归任务为例)
-optimizer = torch.optim.Adam(model.parameters(), lr=0.01)
-criterion = torch.nn.MSELoss()
-
-# 简单训练循环
-model.train()
-for epoch in range(100):
-    optimizer.zero_grad()
-
-    # 前向传播 (传入字典形式的节点特征和边索引)
-    out = model(data.x_dict, data.edge_index_dict)
-
-    # 计算损失 (这里仅对水质节点计算)
-    loss = criterion(out, data['water'].y)
-
-    # 反向传播与优化
-    loss.backward()
-    optimizer.step()
-
-    if epoch % 20 == 0:
-        print(f'Epoch: {epoch:>3}, Loss: {loss.item():.4f}')
+# 实例化模型
+model = MODEL_FACTORY[BACKEND](water_dyn_feat,city_dyn_feat,city_static_feat,
+                    hyper_params['hidden_size'], len(dir_wq_y),
+                    hyper_params['num_layers'],hyper_params['pred_len'],
+                    hyper_params['drop_rate'],metadata)
+print(f"模型参数: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+lossFun = Loss_FACTORY[hyper_params['lossFun']]()
 
 
-model.eval()
-with torch.no_grad():
-    _, semantic_attention = model(data.x_dict, data.edge_index_dict, return_attention=True)
 
 print("\n--- 语义层级注意力权重分析 ---")
 # 提取指向 water 节点的关系

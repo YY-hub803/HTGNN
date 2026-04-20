@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from GRU import GRULayer
-from GNN import HANLayer
+from .gru_model import GRULayer
+from .gnn_model import HANLayer
 
 class GruHANModel(nn.Module):
     def __init__(self,water_dyn_feat, city_dyn_feat, city_static_feat,
