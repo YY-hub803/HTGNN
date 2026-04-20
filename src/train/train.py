@@ -7,11 +7,6 @@ def saveModel(outFolder, model, epoch, modelName='model'):
     modelFile = os.path.join(outFolder, modelName + '_ep' + str(epoch) + '.pt')
     torch.save(model, modelFile)
 
-def loadModel(outFolder, epoch, modelName='model'):
-    modelFile = os.path.join(outFolder, modelName + '_ep' + str(epoch) + '.pt')
-    model = torch.load(modelFile, weights_only=False)
-    return model
-
 
 def train(model, Train,Val, LossFun, num_epochs,base_lr,saveFolder,device):
 

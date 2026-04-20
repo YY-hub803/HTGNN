@@ -30,7 +30,7 @@ class GruHANModel(nn.Module):
         self.dense = nn.Linear(hidden_size, self.pred_len*output_size)
 
     def forward(self, batch_data, return_attention=False):
-
+        BN,_,nT = batch_data['water'].y.shape
         # 提取水质节点时序特征
         h_water = self.gru_water(batch_data['water'].x)         # [Nodes, hidden_size]
         # 提取城市降雨/气候的时序特征
@@ -58,5 +58,5 @@ class GruHANModel(nn.Module):
         prediction = self.dense(torch.relu(out_dict['water']))
 
         if return_attention:
-            return prediction, semantic_attn
-        return prediction
+            return prediction.view(BN,self.pred_len,nT), semantic_attn
+        return prediction.view(BN,self.pred_len,nT)

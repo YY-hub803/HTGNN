@@ -42,7 +42,7 @@ class HeteroDataset(Dataset):
 
 def get_loader(Train,Val,Test,batch_size):
     train_loader = DataLoader(Train, batch_size=batch_size, shuffle=True)
-    # 验证集和测试集不需要打乱
+
     val_loader = DataLoader(Val, batch_size=batch_size, shuffle=False)
     test_loader = DataLoader(Test, batch_size=batch_size, shuffle=False)
     return train_loader, val_loader, test_loader
