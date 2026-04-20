@@ -60,9 +60,9 @@ def split_dataset(X, Y, X_city,train_ratio=0.6, val_ratio=0.2):
 def create_sliding_windows(X, Y,x_city, window_size,pred_len):
     xs, ys,xs_city = [], [],[]
     T = X.size(1)
-    for t in range(T - window_size-pred_len+1):
+    for t in range(T - window_size-pred_len):
         xs.append(X[:,t:t+window_size,:])
-        ys.append(Y[:,t+window_size : t+window_size+pred_len,:])
+        ys.append(Y[:,t+window_size+pred_len-1,:])
         xs_city.append(x_city[:,t:t+window_size,:])
 
     X_seq = torch.stack(xs)

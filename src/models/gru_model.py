@@ -1,6 +1,5 @@
-import torch
 import torch.nn as nn
-import torch.nn.functional as F
+
 
 class GRULayer(nn.Module):
     def __init__(self, input_size,hidden_size,num_layers, drop_rate):
@@ -14,4 +13,4 @@ class GRULayer(nn.Module):
         )
     def forward(self, x):
         _,(lstm_out,_) = self.gru(x)
-        return lstm_out[-1,:,:]
+        return lstm_out[:,:]

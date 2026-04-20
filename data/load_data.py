@@ -60,12 +60,9 @@ def build_edge_index_dict(dir_edges):
         dir_edges["water_to_water"],
         is_undirected=False
     )
-
-    edge_index_dict[('city', 'impact', 'water')] = load_edge_index(
-        dir_edges["city_to_water"],
-        is_undirected=False
-    )
-
+    edge_city_water = load_edge_index(dir_edges["city_to_water"], is_undirected=False)
+    edge_index_dict[('city', 'impact', 'water')] = edge_city_water
+    edge_index_dict[('water', 'impacted_by', 'city')] = edge_city_water.flip([0])
     for edge_type, tensor in edge_index_dict.items():
         print(f"关系 {edge_type} 加载完成: 边数量 = {tensor.shape[1]}")
 

@@ -5,7 +5,8 @@ import numpy as np
 import pandas as pd
 from src.models import model
 from src.utils import crit
-from src.utils.utils import HeteroDataset
+from src.train import train,test,infer
+from src.utils.utils import HeteroDataset,get_loader
 from data.load_data import load_water_data,load_se_data,build_edge_index_dict
 from data.process import get_windows
 
@@ -37,7 +38,9 @@ hyper_params = {
     "BACKEND":"GruHANModel", # select models    GcnLstmModel/PhysicsSTNNModel
     "lossFun":'MAE'
 }
+
 BACKEND= hyper_params["BACKEND"]
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 MODEL_FACTORY = {
     "GruHANModel": model.GruHANModel,
@@ -48,15 +51,24 @@ Loss_FACTORY = {
     "RMSE": crit.RMSELoss,
 }
 
+dir_model = "%s_B%d_H%d_L%d_P%d_dr%.2f_lr%.4f" % (
+    hyper_params['BACKEND'],
+    hyper_params['batch_size'],
+    hyper_params['hidden_size'],
+    hyper_params['history_len'],
+    hyper_params['pred_len'],
+    hyper_params['drop_rate'],
+    hyper_params['base_lr'],
+)
 
 dir_WQ = r"data\WQ_data"
 dir_SE = r"data\SE_data"
 dir_info = r"data\info_data"
 freq = '4h'
-# output_dir = f"Random_OutPut_{freq}"
-# os.makedirs(output_dir, exist_ok=True)
+output_dir = f"Random_OutPut_{freq}"
+os.makedirs(output_dir, exist_ok=True)
 # if hyper_params['pred_len'] == 1:
-#     dir_output = os.path.join(output_dir,dir_model)
+dir_output = os.path.join(output_dir,dir_model)
 # else:
 #     dir_output = os.path.join(f"Multi{hyper_params['pred_len']}_{output_dir}", dir_model)
 
@@ -147,7 +159,13 @@ model = MODEL_FACTORY[BACKEND](water_dyn_feat,city_dyn_feat,city_static_feat,
 print(f"模型参数: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 lossFun = Loss_FACTORY[hyper_params['lossFun']]()
 
-
+#
+train_loader ,val_loader,test_loader= get_loader(Train,Val,Test,hyper_params['batch_size'])
+model_test = train.train(
+    model,train_loader, val_loader,lossFun,
+    hyper_params['epoch_run'],
+    hyper_params['base_lr'],
+    dir_output,device)
 
 print("\n--- 语义层级注意力权重分析 ---")
 # 提取指向 water 节点的关系

@@ -1,4 +1,3 @@
-import torch
 import torch.nn as nn
 from torch_geometric.nn import HANConv
 
@@ -19,9 +18,6 @@ class HANLayer(nn.Module):
             heads=4             # 注意力头数
         )
 
-        # 预测层：假设针对水质节点进行预测
-        self.lin = nn.Linear(hidden_size, out_size)
-
     def forward(self, x_dict, edge_index_dict, return_attention=False):
         # 开启 return_semantic_attention_weights 即可获取语义级的注意力权重
         if return_attention:
@@ -34,9 +30,6 @@ class HANLayer(nn.Module):
             out_dict = self.han(x_dict, edge_index_dict)
             semantic_attn = None
 
-        x_water = torch.relu(out_dict['water'])
-        prediction = self.lin(x_water)
-
         if return_attention:
-            return prediction, semantic_attn
-        return prediction
+            return out_dict, semantic_attn
+        return out_dict
