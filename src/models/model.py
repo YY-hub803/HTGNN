@@ -8,6 +8,7 @@ class GruHANModel(nn.Module):
                  hidden_size, output_size, num_layers,pred_len,drop_rate,metadata):
         super(GruHANModel, self).__init__()
         self.pred_len = pred_len
+        self.ny = output_size
         # 1. 动态特征的时序编码器
         self.gru_water = GRULayer(input_size=water_dyn_feat,
                                 hidden_size=hidden_size,
@@ -30,7 +31,6 @@ class GruHANModel(nn.Module):
         self.dense = nn.Linear(hidden_size, self.pred_len*output_size)
 
     def forward(self, batch_data, return_attention=False):
-        BN,_,nT = batch_data['water'].y.shape
         # 提取水质节点时序特征
         h_water = self.gru_water(batch_data['water'].x)         # [Nodes, hidden_size]
         # 提取城市降雨/气候的时序特征
@@ -59,5 +59,5 @@ class GruHANModel(nn.Module):
         prediction = self.dense(torch.relu(h))
 
         if return_attention:
-            return prediction.view(BN,self.pred_len,nT), semantic_attn
-        return prediction.view(BN,self.pred_len,nT)
+            return prediction.view(-1,self.pred_len,self.ny), semantic_attn
+        return prediction.view(-1,self.pred_len,self.ny)

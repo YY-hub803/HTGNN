@@ -3,14 +3,37 @@ import glob
 import torch
 import random
 import shutil
+import argparse
 import numpy as np
 import pandas as pd
 from src.models import model
 from src.utils import crit,vis
 from src.train import train,test,infer
+from torch.nn.parameter import Parameter
 from src.utils.utils import HeteroDataset,get_loader
 from data.load_data import load_water_data,load_se_data,build_edge_index_dict
 from data.process import get_windows
+
+# hyper_params setting
+parser = argparse.ArgumentParser()
+parser.add_argument('--seed', type=int, default=42, help='Random seed.')                        # 随机种子
+parser.add_argument('--freq',type=str,default='4h',help='Frequency.')                           # 时间频率
+parser.add_argument('--model', type=str, default="GruHANModel", help='which gnn model use')     # 模型
+parser.add_argument('--epochs', type=int, default=400, help='Number of epochs to train.')       # 训练次数
+parser.add_argument('--hidden', type=int, default=64, help='Number of hidden units.')           # 隐藏层
+parser.add_argument('--batch', type=int, default=32, help='Batch size.')                        # 批量大小
+parser.add_argument('--history', type=int, default=32, help='History len.')                     # 历史序列长度
+parser.add_argument('--pred', type=int, default=1, help='Pred len.')                            # 预测长度
+parser.add_argument('--num_heads', type=int, default=8, help='Number of head attentions.')      # 多头注意力
+parser.add_argument('--num_layers',type=int, default=2, help='Number of layers.')               # 模块层数
+parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate.')                 # 丢弃率
+parser.add_argument('--lossFun',type=str,default='RMSE',help='Loss function')                   # 损失函数
+parser.add_argument('--lr', type=float, default=1e-4, help='Initial learning rate.')            # 学习率
+
+args = parser.parse_args()
+
+
+
 
 
 def set_seeds(seed_value):
@@ -22,28 +45,9 @@ def set_seeds(seed_value):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 # set seeds
-random_seed = 40
-set_seeds(random_seed)
+set_seeds(args.seed)
 
-
-hyper_params = {
-    "epoch_run": 400,
-    "epoch_save": 10,
-    "hidden_size": 64,
-    "num_heads": 4,
-    'history_len': 32,
-    'pred_len':1,
-    "batch_size":32,
-    "num_layers" : 2,
-    "drop_rate": 0.5,
-    "warmup_epochs":10,
-    "base_lr":1e-4,
-    "BACKEND":"GruHANModel", # select models    GcnLstmModel/PhysicsSTNNModel
-    "lossFun":'RMSE'
-}
-
-BACKEND= hyper_params["BACKEND"]
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 MODEL_FACTORY = {
     "GruHANModel": model.GruHANModel,
@@ -55,26 +59,25 @@ Loss_FACTORY = {
 }
 
 dir_model = "%s_B%d_H%d_L%d_P%d_dr%.2f_lr%.4f" % (
-    hyper_params['BACKEND'],
-    hyper_params['batch_size'],
-    hyper_params['hidden_size'],
-    hyper_params['history_len'],
-    hyper_params['pred_len'],
-    hyper_params['drop_rate'],
-    hyper_params['base_lr'],
+    args.model,
+    args.batch,
+    args.hidden,
+    args.history,
+    args.pred,
+    args.dropout,
+    args.lr,
 )
 
 dir_WQ = r"data\WQ_data"
 dir_SE = r"data\SE_data"
 dir_info = r"data\info_data"
-freq = '4h'
-output_dir = f"Random_OutPut_{freq}"
+freq = args.freq
+output_dir = f"OutPut_{freq}"
 os.makedirs(output_dir, exist_ok=True)
 
 dir_output = os.path.join(output_dir,dir_model)
 vis_folder = os.path.join(dir_output, 'visualization')
 if not os.path.exists(vis_folder):
-    # 创建文件夹，如果有必要会创建中间目录
     os.makedirs(vis_folder, exist_ok=True)
     print(f"成功创建模型输出文件夹: {vis_folder}")
 else:
@@ -83,8 +86,6 @@ else:
     os.makedirs(vis_folder, exist_ok=True)
 
 dir_wq_x = {
-    "x_pet": os.path.join(dir_WQ, 'input_xforce_pet.csv'),
-    "x_temp": os.path.join(dir_WQ, 'input_xforce_temp.csv'),
     "x_tp": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
     "x_tn": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
     "x_do": os.path.join(dir_WQ, 'input_yobs_DO.csv'),
@@ -144,8 +145,8 @@ val_end = int(date_length * val_ratio)
 test_date_range = full_date_range[train_end + val_end+32:,]
 Sample_data,data_splits, train_stats=get_windows(X,Y,X_city,X_city_static,
                                                 train_ratio,val_ratio,
-                                                hyper_params['history_len'],
-                                                hyper_params['pred_len'])
+                                                args.history,
+                                                args.pred)
 
 Train = HeteroDataset(
     Sample_data['train_x'],
@@ -165,6 +166,7 @@ Test = HeteroDataset(
     Sample_data['test_x_city'],
     Sample_data['X_city_static'],
     edge_index_dict=edge_index_dict)
+torch.save(Test,r'data\dataset\Test_dataset.pt')        # 保存Test数据集用于explain
 # ---------------------------------------------------------
 
 # ---------------------- 实例化模型和损失函数 -------------------------
@@ -177,21 +179,21 @@ city_static_feat = sample_data['city'].x_static.shape[-1]
 print(f"水质动态特征数: {water_dyn_feat}")
 print(f"城市动态特征数: {city_dyn_feat}")
 print(f"城市静态特征数: {city_static_feat}")
-model = MODEL_FACTORY[BACKEND](water_dyn_feat,city_dyn_feat,city_static_feat,
-                    hyper_params['num_heads'],hyper_params['hidden_size'], len(dir_wq_y),
-                    hyper_params['num_layers'],hyper_params['pred_len'],
-                    hyper_params['drop_rate'],metadata)
+model = MODEL_FACTORY[args.model](water_dyn_feat,city_dyn_feat,city_static_feat,
+                    args.num_heads,args.hidden, len(dir_wq_y),
+                    args.num_layers,args.pred,
+                    args.dropout,metadata)
 print(f"模型参数: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
-lossFun = Loss_FACTORY[hyper_params['lossFun']]()
+lossFun = Loss_FACTORY[args.lossFun]()
 # ------------------------------------------------------------------
 
 # ---------------------- 创建Loder并训练模型 -------------------------
-train_loader ,val_loader,test_loader= get_loader(Train,Val,Test,hyper_params['batch_size'])
+train_loader ,val_loader,test_loader= get_loader(Train,Val,Test,args.batch)
 best_model = train.train(
     model,train_loader, val_loader,lossFun,
-    hyper_params['epoch_run'],
-    hyper_params['base_lr'],
-    dir_output,device)
+    args.epochs,
+    args.lr,
+    dir_output,DEVICE)
 
 # ------------------------------------------------------------------
 
@@ -207,7 +209,7 @@ y_out, y_true = test.evaluate(
     model_raw, test_loader,
     train_stats['y_mean'], train_stats['y_std'],
     water_nm,num_water_nodes,Target_Name,
-    hyper_params['pred_len'],dir_output,device)
+    args.pred,dir_output,DEVICE)
 
 # ------------------------------------------------------------------
 
