@@ -12,8 +12,9 @@ def train(model, Train,Val, LossFun, num_epochs,base_lr,saveFolder,device):
 
     model = model.to(device)
     LossFun = LossFun.to(device)
-    optim = torch.optim.Adam(model.parameters(),lr=base_lr, weight_decay=1e-5)
-
+    optim = torch.optim.Adam(model.parameters(),lr=base_lr, weight_decay=5e-4)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optim, mode='min', factor=0.5, patience=5, min_lr=1e-5)
 
     model_name = model.__class__.__name__
     lossFun_name = LossFun.__class__.__name__
@@ -69,6 +70,8 @@ def train(model, Train,Val, LossFun, num_epochs,base_lr,saveFolder,device):
                 total_val_loss += loss_test.item() * batch.num_graphs
 
             avg_val_loss = total_val_loss / len(Val.dataset)
+            scheduler.step(avg_val_loss)
+
             pltRMSE_val.append([epoch, avg_val_loss])
 
 

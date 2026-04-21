@@ -33,19 +33,19 @@ def evaluate(model,Test,y_mean, y_std,
             current_batch_size = int(batch['water'].batch.max()) + 1
             output = output.view(current_batch_size, num_nodes, pred_len,nF).detach().cpu().numpy()
             y = batch_y.view(current_batch_size, num_nodes, pred_len,nF).numpy()
-        for b in range(current_batch_size):
-            for step in range(pred_len):
-                # 物理日历上的绝对时间索引
-                target_time_idx = global_window_idx + step
-                # 提取该时刻的所有节点预测值 (形状: [num_nodes])
-                pred_values = output[b, :, step]
-                time_to_preds[target_time_idx].append(pred_values)
+            for b in range(current_batch_size):
+                for step in range(pred_len):
+                    # 物理日历上的绝对时间索引
+                    target_time_idx = global_window_idx + step
+                    # 提取该时刻的所有节点预测值 (形状: [num_nodes])
+                    pred_values = output[b, :, step,:]
+                    time_to_preds[target_time_idx].append(pred_values)
 
-                # 真实值只需要记录一次即可
-                if target_time_idx not in time_to_trues:
-                    time_to_trues[target_time_idx] = y[b, :, step]
-            # 当前窗口处理完毕，绝对索引步进 1
-            global_window_idx += 1
+                    # 真实值只需要记录一次即可
+                    if target_time_idx not in time_to_trues:
+                        time_to_trues[target_time_idx] = y[b, :, step]
+                # 当前窗口处理完毕，绝对索引步进 1
+                global_window_idx += 1
     final_preds_list = []
     final_trues_list = []
     for t in sorted(time_to_preds.keys()):

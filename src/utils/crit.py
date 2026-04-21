@@ -14,10 +14,7 @@ class RMSELoss(nn.Module):
         """
 
         # 平方误差
-        loss = (output - target) ** 2
-
-        # 先求MSE再开方
-        mse = loss.sum()
+        mse = torch.mean((output - target) ** 2)
         rmse = torch.sqrt(mse)
 
         return rmse
@@ -27,14 +24,7 @@ class MSELoss(nn.Module):
         super(MSELoss, self).__init__()
 
     def forward(self, output, target):
-        """
-        preds:   [Batch, N, T, F]
-        targets: [Batch, N, T, F]
-        mask:    [Batch, N, T, F] (1=真实值, 0=缺失)
-        """
-        loss = (output - target) ** 2
-
-        return loss.sum()
+        return torch.mean((output - target) ** 2)
 
 class NSELoss(nn.Module):
     def __init__(self):
@@ -47,33 +37,24 @@ class NSELoss(nn.Module):
         mask:   [B, N, T, F]
         """
 
-        # -------- 分子：残差平方和 --------
-        numerator = ((output - target) ** 2)
-        numerator = numerator.sum()
+        # 分子：残差平方和
+        numerator = torch.sum((output - target) ** 2)
 
-        # -------- 分母：真实值方差平方和 --------
-        mean_target = target.sum()
+        # 分母：真实值方差平方和
+        mean_target = torch.mean(target)
+        denominator = torch.sum((target - mean_target) ** 2)
 
-        denominator = ((target - mean_target) ** 2)
-        denominator = denominator.sum()
+        # 加上 1e-8 防止分母为 0
+        nse = 1 - numerator / (denominator + 1e-8)
 
-        nse = 1 - numerator / denominator
-
-        # 作为loss返回 → 越小越好
-        loss = 1 - nse
-
-        return loss
+        return nse
 
 class MAELoss(nn.Module):
     def __init__(self):
         super(MAELoss, self).__init__()
 
     def forward(self, output, target):
-        p0 = output
-        t0 = target
-        N = len(t0)
-        loss = torch.abs(t0 - p0)
-        return loss.sum() / N
+        return torch.mean(torch.abs(output - target))
 
 def R2(output, target):
     mask = ~np.isnan(target)

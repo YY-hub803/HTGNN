@@ -2,10 +2,11 @@ import os
 import glob
 import torch
 import random
+import shutil
 import numpy as np
 import pandas as pd
 from src.models import model
-from src.utils import crit
+from src.utils import crit,vis
 from src.train import train,test,infer
 from src.utils.utils import HeteroDataset,get_loader
 from data.load_data import load_water_data,load_se_data,build_edge_index_dict
@@ -21,23 +22,24 @@ def set_seeds(seed_value):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 # set seeds
-random_seed = 250
+random_seed = 40
 set_seeds(random_seed)
 
 
 hyper_params = {
     "epoch_run": 400,
     "epoch_save": 10,
-    "hidden_size": 32,
+    "hidden_size": 64,
+    "num_heads": 4,
     'history_len': 32,
     'pred_len':1,
     "batch_size":32,
     "num_layers" : 2,
-    "drop_rate": 0.3,
+    "drop_rate": 0.5,
     "warmup_epochs":10,
-    "base_lr":1e-3,
+    "base_lr":1e-4,
     "BACKEND":"GruHANModel", # select models    GcnLstmModel/PhysicsSTNNModel
-    "lossFun":'MAE'
+    "lossFun":'RMSE'
 }
 
 BACKEND= hyper_params["BACKEND"]
@@ -68,11 +70,17 @@ dir_info = r"data\info_data"
 freq = '4h'
 output_dir = f"Random_OutPut_{freq}"
 os.makedirs(output_dir, exist_ok=True)
-# if hyper_params['pred_len'] == 1:
-dir_output = os.path.join(output_dir,dir_model)
-# else:
-#     dir_output = os.path.join(f"Multi{hyper_params['pred_len']}_{output_dir}", dir_model)
 
+dir_output = os.path.join(output_dir,dir_model)
+vis_folder = os.path.join(dir_output, 'visualization')
+if not os.path.exists(vis_folder):
+    # 创建文件夹，如果有必要会创建中间目录
+    os.makedirs(vis_folder, exist_ok=True)
+    print(f"成功创建模型输出文件夹: {vis_folder}")
+else:
+    print(f"模型输出文件夹已存在: {vis_folder}")
+    shutil.rmtree(vis_folder, ignore_errors=True)
+    os.makedirs(vis_folder, exist_ok=True)
 
 dir_wq_x = {
     "x_pet": os.path.join(dir_WQ, 'input_xforce_pet.csv'),
@@ -131,27 +139,31 @@ edge_index_dict = build_edge_index_dict(dir_info)
 # ---------------------- 创建数据集 -------------------------
 train_ratio = 0.6
 val_ratio = 0.2
-Sample_data,data_splits, train_stats=get_windows(X,Y,X_city,train_ratio,val_ratio,
-                                                        hyper_params['history_len'],
-                                                        hyper_params['pred_len'])
+train_end = int(date_length * train_ratio)
+val_end = int(date_length * val_ratio)
+test_date_range = full_date_range[train_end + val_end+32:,]
+Sample_data,data_splits, train_stats=get_windows(X,Y,X_city,X_city_static,
+                                                train_ratio,val_ratio,
+                                                hyper_params['history_len'],
+                                                hyper_params['pred_len'])
 
 Train = HeteroDataset(
     Sample_data['train_x'],
     Sample_data['train_y'],
     Sample_data['train_x_city'],
-    X_city_static,
+    Sample_data['X_city_static'],
     edge_index_dict=edge_index_dict)
 Val = HeteroDataset(
     Sample_data['val_x'],
     Sample_data['val_y'],
     Sample_data['val_x_city'],
-    X_city_static,
+    Sample_data['X_city_static'],
     edge_index_dict=edge_index_dict)
 Test = HeteroDataset(
     Sample_data['test_x'],
     Sample_data['test_y'],
     Sample_data['test_x_city'],
-    X_city_static,
+    Sample_data['X_city_static'],
     edge_index_dict=edge_index_dict)
 # ---------------------------------------------------------
 
@@ -166,7 +178,7 @@ print(f"水质动态特征数: {water_dyn_feat}")
 print(f"城市动态特征数: {city_dyn_feat}")
 print(f"城市静态特征数: {city_static_feat}")
 model = MODEL_FACTORY[BACKEND](water_dyn_feat,city_dyn_feat,city_static_feat,
-                    hyper_params['hidden_size'], len(dir_wq_y),
+                    hyper_params['num_heads'],hyper_params['hidden_size'], len(dir_wq_y),
                     hyper_params['num_layers'],hyper_params['pred_len'],
                     hyper_params['drop_rate'],metadata)
 print(f"模型参数: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
@@ -196,5 +208,24 @@ y_out, y_true = test.evaluate(
     train_stats['y_mean'], train_stats['y_std'],
     water_nm,num_water_nodes,Target_Name,
     hyper_params['pred_len'],dir_output,device)
+
+# ------------------------------------------------------------------
+
+# ---------------------- 可视化测试集的效果 ---------------------------
+
+if 'y_out' in locals():
+    print("------------------------ 生成可视化图表 ------------------------------")
+    vis_mapping = {
+        "DO": lambda: vis.vis_filled(y_true['DO'], y_out['DO'], test_date_range, vis_folder, "DO"),
+        "TP": lambda: vis.vis_filled(y_true['TP'], y_out['TP'], test_date_range, vis_folder, "TP"),
+        "NTU": lambda: vis.vis_filled(y_true['NTU'], y_out['NTU'], test_date_range, vis_folder, "NTU"),
+        "TN": lambda: vis.vis_filled(y_true['TN'], y_out['TN'], test_date_range, vis_folder, "TN"),
+        "EC": lambda: vis.vis_filled(y_true['EC'], y_out['EC'], test_date_range, vis_folder, "EC")
+    }
+    for var_name, vis_func in vis_mapping.items():
+        if var_name in Target_Name:
+            vis_func()  # 执行对应变量的可视化函数
+            print(f"已执行 {var_name} 的可视化，保存至 {vis_folder}")
+
 
 # ------------------------------------------------------------------

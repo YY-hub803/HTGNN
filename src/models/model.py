@@ -4,7 +4,7 @@ from .gru_model import GRULayer
 from .gnn_model import HANLayer
 
 class GruHANModel(nn.Module):
-    def __init__(self,water_dyn_feat, city_dyn_feat, city_static_feat,
+    def __init__(self,water_dyn_feat, city_dyn_feat, city_static_feat,num_heads,
                  hidden_size, output_size, num_layers,pred_len,drop_rate,metadata):
         super(GruHANModel, self).__init__()
         self.pred_len = pred_len
@@ -25,7 +25,7 @@ class GruHANModel(nn.Module):
             hidden_size=hidden_size,
             out_size = hidden_size,
             metadata=metadata,
-            heads=4
+            heads=num_heads
         )
         self.dense = nn.Linear(hidden_size, self.pred_len*output_size)
 
@@ -51,11 +51,12 @@ class GruHANModel(nn.Module):
         # --- 图卷积与预测 ---
         if return_attention:
             out_dict, semantic_attn = self.han(x_dict_encoded, batch_data.edge_index_dict,
-                                               return_semantic_attention_weights=True)
+                                            return_semantic_attention_weights=True)
         else:
             out_dict = self.han(x_dict_encoded, batch_data.edge_index_dict)
             semantic_attn = None
-        prediction = self.dense(torch.relu(out_dict['water']))
+        h = h_water+out_dict['water']
+        prediction = self.dense(torch.relu(h))
 
         if return_attention:
             return prediction.view(BN,self.pred_len,nT), semantic_attn
