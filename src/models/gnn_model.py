@@ -19,7 +19,7 @@ class HANLayer(nn.Module):
         )
 
     def forward(self, x_dict, edge_index_dict, return_attention=False):
-        # 开启 return_semantic_attention_weights 即可获取语义级的注意力权重
+
         if return_attention:
             out_dict, semantic_attn = self.han(
                 x_dict,

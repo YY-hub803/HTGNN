@@ -11,7 +11,7 @@ def evaluate(model,Test,y_mean, y_std,
 
     model.eval()
     model_name = model.__class__.__name__
-    nF = model.output_size
+    nF = len(Target_Name)
     if saveFolder is not None:
         if not os.path.exists(saveFolder):
             os.makedirs(saveFolder)
@@ -31,8 +31,8 @@ def evaluate(model,Test,y_mean, y_std,
             batch = batch.to(device)
             output = model(batch)
             current_batch_size = int(batch['water'].batch.max()) + 1
-            output = output.view(current_batch_size, num_nodes, pred_len,).detach().cpu().numpy()
-            y = batch_y.view(current_batch_size, num_nodes, pred_len)
+            output = output.view(current_batch_size, num_nodes, pred_len,nF).detach().cpu().numpy()
+            y = batch_y.view(current_batch_size, num_nodes, pred_len,nF).numpy()
         for b in range(current_batch_size):
             for step in range(pred_len):
                 # 物理日历上的绝对时间索引
@@ -46,32 +46,35 @@ def evaluate(model,Test,y_mean, y_std,
                     time_to_trues[target_time_idx] = y[b, :, step]
             # 当前窗口处理完毕，绝对索引步进 1
             global_window_idx += 1
+    final_preds_list = []
+    final_trues_list = []
+    for t in sorted(time_to_preds.keys()):
+        # 沿着重叠窗口维度 (axis=0) 取均值，平滑预测结果
+        avg_pred = np.mean(time_to_preds[t], axis=0)
+        final_preds_list.append(avg_pred)
+        final_trues_list.append(time_to_trues[t])
+    # 堆叠成最终的矩阵: 形状为 [Total_Time_Steps, num_nodes, num_features]
+    final_preds = np.stack(final_preds_list, axis=0)
+    final_trues = np.stack(final_trues_list, axis=0)
 
-
-    pred_dfs = {}
-    obs_dfs = {}
-
+    output_df = {}
+    true_df = {}
     for i, var_name in enumerate(Target_Name):
         print(f"\n--- 评估预测变量: {var_name} ---")
-        pred_raw = x_batch_list[:, :, i]  # [N, T]
-        obs_raw = y_batch_list[:, :, i]  # [N, T]
+        pred_raw = final_preds[:, :, i]  # [N, T]
+        obs_raw = final_trues[:, :, i]  # [N, T]
 
-        try:
-            cur_std = y_std.flat[i] if isinstance(y_std, np.ndarray) else y_std
-            cur_mean = y_mean.flat[i] if isinstance(y_mean, np.ndarray) else y_mean
-        except:
-            cur_std = y_std[:, :, i][0][0]
-            cur_mean = y_mean[:, :, i][0][0]
-
+        cur_std = np.array(y_std).flat[i]
+        cur_mean = np.array(y_mean).flat[i]
         # 反归一化
         pred_inv = pred_raw * cur_std + cur_mean
         obs_inv = obs_raw * cur_std + cur_mean
 
-        df_pred = pd.DataFrame(pred_inv, index=site_names).T
-        df_obs = pd.DataFrame(obs_inv, index=site_names).T
+        df_pred = pd.DataFrame(pred_inv, columns=site_names)
+        df_obs = pd.DataFrame(obs_inv, columns=site_names)
 
-        pred_dfs[var_name] = df_pred
-        obs_dfs[var_name] = df_obs
+        output_df[var_name] = df_pred
+        true_df[var_name] = df_obs
 
         # 保存结果文件
         if saveFolder:
@@ -121,4 +124,4 @@ def evaluate(model,Test,y_mean, y_std,
 
     if rf: rf.close()
 
-    return pred_dfs, obs_dfs
+    return output_df, true_df
