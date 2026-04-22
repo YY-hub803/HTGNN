@@ -6,8 +6,8 @@ from collections import defaultdict
 from ..utils.crit import R2,NSE,RMSE,KGE,MAE
 
 def evaluate(model,Test,y_mean, y_std,
-             site_names, num_nodes,Target_Name,
-             pred_len, saveFolder,device):
+            site_names, num_nodes,Target_Name,
+            pred_len, saveFolder,device,return_semantic_attn=False):
 
     model.eval()
     model_name = model.__class__.__name__
@@ -24,12 +24,18 @@ def evaluate(model,Test,y_mean, y_std,
     time_to_preds = defaultdict(list)
     time_to_trues = {}
     global_window_idx = 0
+    all_semantic_weights = []
 
     with torch.no_grad():
         for batch in Test:
             batch_y = batch['water'].y
             batch = batch.to(device)
-            output = model(batch)
+            if return_semantic_attn:
+                output,semantic_attn = model(batch,return_semantic_attn=True)
+            else:
+                output = model(batch)
+            weights = semantic_attn.cpu().numpy()
+            all_semantic_weights.append(weights)
             current_batch_size = int(batch['water'].batch.max()) + 1
             output = output.view(current_batch_size, num_nodes, pred_len,nF).detach().cpu().numpy()
             y = batch_y.view(current_batch_size, num_nodes, pred_len,nF).numpy()
@@ -46,6 +52,7 @@ def evaluate(model,Test,y_mean, y_std,
                         time_to_trues[target_time_idx] = y[b, :, step]
                 # 当前窗口处理完毕，绝对索引步进 1
                 global_window_idx += 1
+    avg_semantic_weights = np.mean(all_semantic_weights, axis=0)
     final_preds_list = []
     final_trues_list = []
     for t in sorted(time_to_preds.keys()):
@@ -123,5 +130,32 @@ def evaluate(model,Test,y_mean, y_std,
                 if rf: rf.write(logStr_overall + '\n')
 
     if rf: rf.close()
+    if return_semantic_attn:
+        return output_df, true_df,avg_semantic_weights
+    else:
+        return output_df, true_df
 
-    return output_df, true_df
+
+def analyze_semantic_attention(model, Test, device='cuda'):
+    """
+    提取并可视化 HAN 模型的语义级注意力权重 (Semantic Attention Weights)
+    """
+    model.eval()
+
+    # 用于累加测试集中所有样本的语义权重
+    all_semantic_weights = []
+    print("🔍 开始提取不同语义(Meta-path)的注意力权重...")
+    with torch.no_grad():
+        for batch in Test:
+            batch = batch.to(device)
+            # 接收前向传播暴露出来的权重
+            out, semantic_attn = model(batch,return_semantic_attn=True)
+            # semantic_attn 通常是一个形状为 [num_meta_paths] 的 Tensor
+            # 代表各个关系在当前 batch 中的相对重要性 (加和为 1.0)
+            weights = semantic_attn.cpu().numpy()
+            all_semantic_weights.append(weights)
+    # 计算所有测试集样本的平均语义权重
+    avg_semantic_weights = np.mean(all_semantic_weights, axis=0)
+
+    print("\n✅ 提取完成！")
+    return avg_semantic_weights

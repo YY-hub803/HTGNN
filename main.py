@@ -29,7 +29,7 @@ parser.add_argument('--num_layers',type=int, default=2, help='Number of layers.'
 parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate.')                 # 丢弃率
 parser.add_argument('--lossFun',type=str,default='RMSE',help='Loss function')                   # 损失函数
 parser.add_argument('--lr', type=float, default=1e-4, help='Initial learning rate.')            # 学习率
-
+parser.add_argument('--weights',type=bool,default=True,help='Whether to return attn_weights.')  # 是否返回语义权重
 args = parser.parse_args()
 
 
@@ -205,11 +205,19 @@ latest_model_path = max(model_files, key=os.path.getmtime)
 print(f">>> 加载原始模型进行插补: {latest_model_path}")
 model_raw = torch.load(latest_model_path,weights_only=False)
 Target_Name = list(dir_wq_y.keys())
-y_out, y_true = test.evaluate(
-    model_raw, test_loader,
-    train_stats['y_mean'], train_stats['y_std'],
-    water_nm,num_water_nodes,Target_Name,
-    args.pred,dir_output,DEVICE)
+
+if args.weight:
+    y_out, y_true,semantic_weights = test.evaluate(
+        model_raw, test_loader,
+        train_stats['y_mean'], train_stats['y_std'],
+        water_nm,num_water_nodes,Target_Name,
+        args.pred,dir_output,DEVICE,args.weight)
+else:
+    y_out, y_true = test.evaluate(
+        model_raw, test_loader,
+        train_stats['y_mean'], train_stats['y_std'],
+        water_nm,num_water_nodes,Target_Name,
+        args.pred,dir_output,DEVICE)
 
 # ------------------------------------------------------------------
 

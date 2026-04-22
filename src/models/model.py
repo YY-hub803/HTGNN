@@ -5,7 +5,7 @@ from .gnn_model import HANLayer
 
 class GruHANModel(nn.Module):
     def __init__(self,water_dyn_feat, city_dyn_feat, city_static_feat,num_heads,
-                 hidden_size, output_size, num_layers,pred_len,drop_rate,metadata):
+                hidden_size, output_size, num_layers,pred_len,drop_rate,metadata):
         super(GruHANModel, self).__init__()
         self.pred_len = pred_len
         self.ny = output_size
