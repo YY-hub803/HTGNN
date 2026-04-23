@@ -16,20 +16,21 @@ from data.process import get_windows
 
 # hyper_params setting
 parser = argparse.ArgumentParser()
+parser.add_argument('--train',type=bool,default=True,help='Whether to train model')             # 是否训练
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')                        # 随机种子
 parser.add_argument('--freq',type=str,default='4h',help='Frequency.')                           # 时间频率
-parser.add_argument('--model', type=str, default="GruHANModel", help='which gnn model use')     # 模型
+parser.add_argument('--model', type=str, default="GruHANModel", help='GruHANModel/GruModel')       # 模型
 parser.add_argument('--epochs', type=int, default=400, help='Number of epochs to train.')       # 训练次数
-parser.add_argument('--hidden', type=int, default=64, help='Number of hidden units.')           # 隐藏层
+parser.add_argument('--hidden', type=int, default=32, help='Number of hidden units.')           # 隐藏层
 parser.add_argument('--batch', type=int, default=32, help='Batch size.')                        # 批量大小
 parser.add_argument('--history', type=int, default=32, help='History len.')                     # 历史序列长度
 parser.add_argument('--pred', type=int, default=1, help='Pred len.')                            # 预测长度
 parser.add_argument('--num_heads', type=int, default=8, help='Number of head attentions.')      # 多头注意力
 parser.add_argument('--num_layers',type=int, default=2, help='Number of layers.')               # 模块层数
-parser.add_argument('--dropout', type=float, default=0.6, help='Dropout rate.')                 # 丢弃率
+parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate.')                 # 丢弃率
 parser.add_argument('--lossFun',type=str,default='RMSE',help='Loss function')                   # 损失函数
 parser.add_argument('--lr', type=float, default=1e-4, help='Initial learning rate.')            # 学习率
-parser.add_argument('--weights',type=bool,default=True,help='Whether to return attn_weights.')  # 是否返回语义权重
+parser.add_argument('--weights',type=bool,default=False,help='Whether to return attn_weights.')  # 是否返回语义权重
 args = parser.parse_args()
 
 
@@ -51,6 +52,7 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 MODEL_FACTORY = {
     "GruHANModel": model.GruHANModel,
+    'GruModel': model.GruModel,
 }
 Loss_FACTORY = {
     "MSE": crit.MSELoss,
@@ -72,7 +74,10 @@ dir_WQ = r"data\WQ_data"
 dir_SE = r"data\SE_data"
 dir_info = r"data\info_data"
 freq = args.freq
-output_dir = f"OutPut_{freq}"
+if args.pred==1:
+    output_dir = f"OutPut_{freq}"
+else:
+    output_dir = f"Pred{args.pred}_OutPut_{freq}"
 os.makedirs(output_dir, exist_ok=True)
 
 dir_output = os.path.join(output_dir,dir_model)
@@ -99,6 +104,7 @@ dir_wq_y = {
 
 dir_se_x = {
     "x_pre": os.path.join(dir_SE, 'input_xforce_prcp.csv'),
+    "x_pet": os.path.join(dir_SE, 'input_xforce_pet.csv'),
 }
 dir_se_c = {
     "c_all": os.path.join(dir_SE, 'input_c_all.csv'),
@@ -181,7 +187,7 @@ print(f"城市动态特征数: {city_dyn_feat}")
 print(f"城市静态特征数: {city_static_feat}")
 model = MODEL_FACTORY[args.model](water_dyn_feat,city_dyn_feat,city_static_feat,
                     args.num_heads,args.hidden, len(dir_wq_y),
-                    args.num_layers,args.pred,
+                    args.num_layers,
                     args.dropout,metadata)
 print(f"模型参数: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
 lossFun = Loss_FACTORY[args.lossFun]()
@@ -189,11 +195,12 @@ lossFun = Loss_FACTORY[args.lossFun]()
 
 # ---------------------- 创建Loder并训练模型 -------------------------
 train_loader ,val_loader,test_loader= get_loader(Train,Val,Test,args.batch)
-best_model = train.train(
-    model,train_loader, val_loader,lossFun,
-    args.epochs,
-    args.lr,
-    dir_output,DEVICE)
+if args.train:
+    best_model = train.train(
+        model,train_loader, val_loader,lossFun,
+        args.epochs,
+        args.lr,
+        dir_output,DEVICE)
 
 # ------------------------------------------------------------------
 
@@ -206,12 +213,12 @@ print(f">>> 加载原始模型进行插补: {latest_model_path}")
 model_raw = torch.load(latest_model_path,weights_only=False)
 Target_Name = list(dir_wq_y.keys())
 
-if args.weight:
+if args.weights:
     y_out, y_true,semantic_weights = test.evaluate(
         model_raw, test_loader,
         train_stats['y_mean'], train_stats['y_std'],
         water_nm,num_water_nodes,Target_Name,
-        args.pred,dir_output,DEVICE,args.weight)
+        args.pred,dir_output,DEVICE,args.weights)
 else:
     y_out, y_true = test.evaluate(
         model_raw, test_loader,

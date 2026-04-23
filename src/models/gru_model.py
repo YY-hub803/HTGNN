@@ -12,5 +12,5 @@ class GRULayer(nn.Module):
             dropout=drop_rate if num_layers > 1 else 0
         )
     def forward(self, x):
-        _,(lstm_out,_) = self.gru(x)
-        return lstm_out[:,:]
+        lstm_out,_ = self.gru(x)
+        return lstm_out

@@ -99,7 +99,7 @@ dir_info = {
 dataset = torch.load(r'D:\Program\HTGNN\data\dataset\Test_dataset.pt')
 model = torch.load(r'D:\Program\HTGNN\OutPut_4h/GruHANModel_B32_H64_L32_P1_dr0.60_lr0.0001/best_model.pt',weights_only=False)
 edge_index_dict = build_edge_index_dict(dir_info)
-target_water_idx=12
+target_water_idx=7
 target_var_idx=0
 w_imp, c_imp, raw_w_attr, raw_c_attr,raw_c_static_attr = global_explain_target(model, dataset, edge_index_dict, target_water_idx, target_var_idx)
 total_system_impact = np.sum(w_imp) + np.sum(c_imp)

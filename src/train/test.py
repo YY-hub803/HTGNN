@@ -31,11 +31,16 @@ def evaluate(model,Test,y_mean, y_std,
             batch_y = batch['water'].y
             batch = batch.to(device)
             if return_semantic_attn:
-                output,semantic_attn = model(batch,return_semantic_attn=True)
+                '''semantic_attn 是一个字典
+                {'water':[('water','flows_to','water'),('city','impact','water')]
+                'city':[('water','impact','city')]}     忽略城市节点的权重，这是为了方便模型计算而加上的反向边
+                '''
+                output,semantic_attn = model(batch,return_attention=True)
+                weights = semantic_attn['water'].cpu().numpy()
+                all_semantic_weights.append(weights)
             else:
                 output = model(batch)
-            weights = semantic_attn.cpu().numpy()
-            all_semantic_weights.append(weights)
+
             current_batch_size = int(batch['water'].batch.max()) + 1
             output = output.view(current_batch_size, num_nodes, pred_len,nF).detach().cpu().numpy()
             y = batch_y.view(current_batch_size, num_nodes, pred_len,nF).numpy()
@@ -52,7 +57,9 @@ def evaluate(model,Test,y_mean, y_std,
                         time_to_trues[target_time_idx] = y[b, :, step]
                 # 当前窗口处理完毕，绝对索引步进 1
                 global_window_idx += 1
-    avg_semantic_weights = np.mean(all_semantic_weights, axis=0)
+    if return_semantic_attn:
+        avg_semantic_weights = np.mean(all_semantic_weights, axis=0)
+
     final_preds_list = []
     final_trues_list = []
     for t in sorted(time_to_preds.keys()):
