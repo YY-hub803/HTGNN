@@ -28,7 +28,7 @@ class GruHANModel(nn.Module):
             in_channels=hidden_size,
             out_channels=hidden_size,
             metadata=metadata,
-            heads=num_heads
+            heads=1
         )
         # ===== 4. 时间编码 =====
         self.time_emb = nn.Embedding(max_time_steps, hidden_size)
@@ -65,6 +65,12 @@ class GruHANModel(nn.Module):
             nn.ReLU(),
             nn.Dropout(drop_rate),
             nn.Linear(hidden_size, output_size)
+        )
+
+    def causal_mask(self, T, device):
+        return torch.triu(
+            torch.ones(T, T, device=device) * -1e9,
+            diagonal=1
         )
 
     def forward(self, batch_data, return_attention=False):
@@ -117,30 +123,42 @@ class GruHANModel(nn.Module):
         # =========================
         # Step 5: Temporal Attention
         # =========================
+        mask = self.causal_mask(T, h_water_time.device)
+
         h_water_temp, _ = self.temporal_attn(
-            h_water_time, h_water_time, h_water_time
+            h_water_time, h_water_time, h_water_time, attn_mask=mask
         )
         h_water_temp = self.norm1(h_water_temp + h_water_time)
 
         h_city_temp, _ = self.temporal_attn(
-            h_city_time, h_city_time, h_city_time
+            h_city_time, h_city_time, h_city_time, attn_mask=mask
         )
         h_city_temp = self.norm1(h_city_temp + h_city_time)
 
         # 取最后时刻（或 mean）
-        h_water_final = h_water_temp[:, -1, :]  # [Nw, H]
+        h_last = h_water_temp[:, -1, :]
+        h_mean = h_water_temp.mean(dim=1)
+        h_max = torch.logsumexp(h_water_temp, dim=1)
+        h_water_final = h_last + h_mean + h_max # [Nw, H]
         h_city_final  = h_city_temp[:, -1, :]   # [Nc, H]
 
         # =========================
         # Step 6: Cross-node Attention（支持 Nw ≠ Nc）
         # =========================
+        mask_cross = torch.full((Nw, Nc), -1e9, device=h_last.device)
+        # 屏蔽掉不符合实际的边
+        if ('water', 'impacted_by', 'city') in batch_data.edge_index_dict:
+            edge = batch_data.edge_index_dict[('water', 'impacted_by', 'city')]
+            mask_cross[edge[0], edge[1]] = 0
+        row_has_edge = (mask_cross == 0).any(dim=1)
+        mask_cross[~row_has_edge] = 0  # fallback 到全连接
         # water queries, city keys
         q = h_water_final.unsqueeze(0)  # [1, Nw, H]
         k = h_city_final.unsqueeze(0)   # [1, Nc, H]
         v = h_city_final.unsqueeze(0)
 
-        h_cross, _ = self.cross_attn(q, k, v)  # [1, Nw, H]
-        h_cross = h_cross.squeeze(0)           # [Nw, H]
+        h_cross, _ = self.cross_attn(q, k, v,attn_mask=mask_cross)  # [1, Nw, H]
+        h_cross = h_cross.squeeze(0)                                # [Nw, H]
 
         # ===== Gate 融合 =====
         gate = torch.sigmoid(
@@ -167,9 +185,8 @@ class GruHANModel(nn.Module):
 
 class GruModel(nn.Module):
     def __init__(self,water_dyn_feat, city_dyn_feat, city_static_feat,num_heads,
-                hidden_size, output_size, num_layers,pred_len,drop_rate,metadata):
+                hidden_size, output_size, num_layers,drop_rate,metadata,):
         super(GruModel, self).__init__()
-        self.pred_len = pred_len
         self.ny = output_size
         # 1. 动态特征的时序编码器
         self.gru_water = GRULayer(input_size=water_dyn_feat,
@@ -177,11 +194,11 @@ class GruModel(nn.Module):
                                 num_layers=num_layers,
                                 drop_rate=drop_rate)
 
-        self.dense = nn.Linear(hidden_size, self.pred_len*output_size)
+        self.dense = nn.Linear(hidden_size, output_size)
 
     def forward(self, batch_data, return_attention=False):
         # 提取水质节点时序特征
         h_water = self.gru_water(batch_data['water'].x)         # [Nodes, hidden_size]
 
-        prediction = self.dense(torch.relu(h_water))
-        return prediction.view(-1,self.ny)
+        prediction = self.dense(torch.relu(h_water[:,-1,:]))
+        return prediction

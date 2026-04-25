@@ -19,17 +19,17 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--train',type=bool,default=True,help='Whether to train model')             # 是否训练
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')                        # 随机种子
 parser.add_argument('--freq',type=str,default='4h',help='Frequency.')                           # 时间频率
-parser.add_argument('--model', type=str, default="GruHANModel", help='GruHANModel/GruModel')       # 模型
+parser.add_argument('--model', type=str, default="GruHANModel", help='GruHANModel/GruModel')    # 模型
 parser.add_argument('--epochs', type=int, default=400, help='Number of epochs to train.')       # 训练次数
 parser.add_argument('--hidden', type=int, default=32, help='Number of hidden units.')           # 隐藏层
-parser.add_argument('--batch', type=int, default=32, help='Batch size.')                        # 批量大小
+parser.add_argument('--batch', type=int, default=16, help='Batch size.')                        # 批量大小
 parser.add_argument('--history', type=int, default=32, help='History len.')                     # 历史序列长度
 parser.add_argument('--pred', type=int, default=1, help='Pred len.')                            # 预测长度
 parser.add_argument('--num_heads', type=int, default=8, help='Number of head attentions.')      # 多头注意力
 parser.add_argument('--num_layers',type=int, default=2, help='Number of layers.')               # 模块层数
 parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate.')                 # 丢弃率
 parser.add_argument('--lossFun',type=str,default='RMSE',help='Loss function')                   # 损失函数
-parser.add_argument('--lr', type=float, default=1e-4, help='Initial learning rate.')            # 学习率
+parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate.')            # 学习率
 parser.add_argument('--weights',type=bool,default=False,help='Whether to return attn_weights.')  # 是否返回语义权重
 args = parser.parse_args()
 
@@ -58,15 +58,16 @@ Loss_FACTORY = {
     "MSE": crit.MSELoss,
     "MAE": crit.MAELoss,
     "RMSE": crit.RMSELoss,
+    "MixLoss": crit.MixLoss,
 }
 
-dir_model = "%s_B%d_H%d_L%d_P%d_dr%.2f_lr%.4f" % (
+dir_model = "%s_B%d_H%d_L%d_NL%d_NH%d_lr%.4f" % (
     args.model,
     args.batch,
     args.hidden,
     args.history,
-    args.pred,
-    args.dropout,
+    args.num_layers,
+    args.num_heads,
     args.lr,
 )
 
@@ -74,10 +75,8 @@ dir_WQ = r"data\WQ_data"
 dir_SE = r"data\SE_data"
 dir_info = r"data\info_data"
 freq = args.freq
-if args.pred==1:
-    output_dir = f"OutPut_{freq}"
-else:
-    output_dir = f"Pred{args.pred}_OutPut_{freq}"
+
+output_dir = f"OutPut"
 os.makedirs(output_dir, exist_ok=True)
 
 dir_output = os.path.join(output_dir,dir_model)
@@ -148,7 +147,7 @@ train_ratio = 0.6
 val_ratio = 0.2
 train_end = int(date_length * train_ratio)
 val_end = int(date_length * val_ratio)
-test_date_range = full_date_range[train_end + val_end+32:,]
+test_date_range = full_date_range[train_end + val_end + args.history:,]
 Sample_data,data_splits, train_stats=get_windows(X,Y,X_city,X_city_static,
                                                 train_ratio,val_ratio,
                                                 args.history,

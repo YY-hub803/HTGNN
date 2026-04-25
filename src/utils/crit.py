@@ -55,6 +55,13 @@ class MAELoss(nn.Module):
 
     def forward(self, output, target):
         return torch.mean(torch.abs(output - target))
+class MixLoss(nn.Module):
+    def __init__(self):
+        super(MixLoss, self).__init__()
+        self.mse = MSELoss()
+        self.mae = MAELoss()
+    def forward(self, output, target):
+        return 0.7*self.mse(output, target) + 0.3*self.mae(output, target)
 
 def R2(output, target):
     mask = ~np.isnan(target)
