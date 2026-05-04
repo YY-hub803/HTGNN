@@ -1,9 +1,15 @@
+import os
 import torch
 import numpy as np
 from tqdm import tqdm
 import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
 from torch_geometric.data import HeteroData
 from captum.attr import IntegratedGradients
+
+plt.style.use('seaborn-v0_8-white')
+plt.rcParams['font.family'] = ['Times New Roman',"SimSun",'SimHei']
+plt.rcParams['axes.unicode_minus'] = False
 
 class GlobalExplanation:
     def __init__(self, model,dataset,edge_index_dict,target_var_idx,device):
@@ -40,7 +46,7 @@ class GlobalExplanation:
         global_c_static_imp = 0.0
 
         for idx,sample in enumerate(tqdm(self.data, desc="计算全流域 IG")):
-
+            sample: HeteroData          # 类型注释
             water_x = sample['water'].x.to(self.device).requires_grad_()
             city_x_dyn = sample['city'].x_dyn.to(self.device).requires_grad_()
             city_x_static = sample['city'].x_static.to(self.device).requires_grad_()
@@ -64,34 +70,33 @@ class GlobalExplanation:
             attr_w = np.abs(attributions[0].squeeze(0).cpu().detach().numpy())  # [14, 32, 7]
             attr_c_dyn = np.abs(attributions[1].squeeze(0).cpu().detach().numpy())  # [28, 32, 1]
             attr_c_static = np.abs(attributions[2].squeeze(0).cpu().detach().numpy())  # [28, F_static]
-
-            # 直接在这个循环里，沿着空间(节点)和时间(序列)维度把特征拍扁！
-            # 只保留特征维度的长度，从而得到“某个特征在全局所有时空中的总活动量”
-            global_w_imp += np.sum(attr_w, axis=(0, 1))  # 形状: [5]
-            global_c_dyn_imp += np.sum(attr_c_dyn, axis=(0, 1))  # 形状: [1]
-            global_c_static_imp += np.sum(attr_c_static, axis=0)  # 形状: [F_static]
-        total_impact = np.sum(global_w_imp) + np.sum(global_c_dyn_imp) + np.sum(global_c_static_imp)
-
+            global_w_imp += attr_w
+            global_c_dyn_imp += attr_c_dyn
+            global_c_static_imp += attr_c_static
         results = {
             'water': global_w_imp,
             'city_dyn': global_c_dyn_imp,
             'city_static': global_c_static_imp,
-            'ratios': {
-                'water': (global_w_imp / total_impact) * 100,
-                'city_dyn': (global_c_dyn_imp / total_impact) * 100,
-                'city_static': (global_c_static_imp / total_impact) * 100
-            }
+
         }
         return results
 
-    def plot_importance(self,results,feature_names_dict,top_k=10):
+    def plot_importance(self,results,feature_names_dict,saveFolder,top_k=10):
         all_names = []
         all_values = []
         colors = []
+        result_importance = {
+            'water': np.sum(results['water'],axis=(0,1)),
+            'city_dyn':np.sum(results['city_dyn'],axis=(0,1)),
+            'city_static':np.sum(results['city_static'],axis=0),
+        }
+        categories = ['Water_x', 'City_dyn', 'City_se']
+        category_colors = ['#3498db', '#e74c3c', '#2ecc71']
+
         # 合并所有特征及其类别颜色
-        for category, color in zip(['water', 'city_dyn', 'city_static'], ['#3498db', '#e74c3c', '#2ecc71']):
+        for category, color in zip(['water', 'city_dyn', 'city_static'], category_colors):
             all_names.extend(feature_names_dict[category])
-            all_values.extend(results['ratios'][category])
+            all_values.extend(result_importance[category])
             colors.extend([color] * len(feature_names_dict[category]))
 
         # 排序
@@ -101,17 +106,49 @@ class GlobalExplanation:
 
         idx = np.argsort(all_values)[::-1][:top_k]  # 取前 K 个
 
-        plt.figure(figsize=(10, 6))
+        plt.figure(figsize=(12, 6))
         bars = plt.barh(all_names[idx][::-1], all_values[idx][::-1], color=colors[idx][::-1])
-        plt.xlabel('Importance Contribution (%)')
+        plt.xlabel('Feature Importance')
         plt.title(f'Global Feature Importance (Top {top_k})')
         plt.grid(axis='x', linestyle='--', alpha=0.7)
+
+        legend_patches = [mpatches.Patch(color=color, label=category)
+                        for category, color in zip(categories, category_colors)]
+        plt.legend(handles=legend_patches, title='Feature Types', loc='lower right')
 
         # 添加标注
         for bar in bars:
             width = bar.get_width()
-            plt.text(width + 0.3, bar.get_y() + bar.get_height() / 2, f'{width:.2f}%', va='center')
+            plt.text(width + 0.3, bar.get_y() + bar.get_height() / 2, f'{width:.2f}', va='center')
+        plt.tight_layout()
+        plt.savefig(os.path.join(saveFolder,'GlobalFeatureImportance.png'))
+        plt.show()
+
+    def plot_node_seq(self, results, target_node_idx,saveFolder, node_names=None):
+        # 计算占比
+        data = np.sum(results['water'][target_node_idx],axis=1)/np.sum(results['water'][target_node_idx])
+
+        data = data[16:]
+        n_timesteps = len(data)
+        x_labels = [f"t-{i}" if i != 0 else "t" for i in range(n_timesteps - 1, -1, -1)]
+        x = np.arange(n_timesteps)
+        width = 0.6
+        fig, ax = plt.subplots(figsize=(4, 3))
+        bar_color = '#425066'
+        ax.bar(x, data, width, color=bar_color, label='Contribution')
+        ax.set_ylabel("Contribution", fontsize=11, fontweight='bold')
+        ax.set_ylim(0, 0.5)
+        ax.set_yticks([0, 0.25, 0.5])  # 根据参考图设置特定刻度
+        ax.tick_params(axis='y', labelsize=10)  # 调整刻度字体大小
+        # 设置 X 轴
+        ax.set_xticks(x)
+        ax.set_xticklabels(x_labels, fontsize=10,rotation=45, ha='right')
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        node_label = node_names[target_node_idx] if node_names else f"Node {target_node_idx}"
+        ax.set_title(f"{node_label}: Contribution from 16 time step", fontsize=12)
 
         plt.tight_layout()
+        plt.savefig(os.path.join(saveFolder,f'{node_label}Contribution of 16 time step.png'))
         plt.show()
 

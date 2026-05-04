@@ -25,7 +25,7 @@ parser.add_argument('--hidden', type=int, default=32, help='Number of hidden uni
 parser.add_argument('--batch', type=int, default=16, help='Batch size.')                        # 批量大小
 parser.add_argument('--history', type=int, default=32, help='History len.')                     # 历史序列长度
 parser.add_argument('--pred', type=int, default=1, help='Pred len.')                            # 预测长度
-parser.add_argument('--num_heads', type=int, default=8, help='Number of head attentions.')      # 多头注意力
+parser.add_argument('--num_heads', type=int, default=4, help='Number of head attentions.')      # 多头注意力
 parser.add_argument('--num_layers',type=int, default=2, help='Number of layers.')               # 模块层数
 parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate.')                 # 丢弃率
 parser.add_argument('--lossFun',type=str,default='RMSE',help='Loss function')                   # 损失函数

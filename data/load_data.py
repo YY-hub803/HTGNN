@@ -38,7 +38,7 @@ def load_water_data(dir_x, dir_y,num_sites, date_length):
     return X_water, Y_water
 
 
-def load_se_data(dir_x,dir_c,num_sites, full_date_range,num_static_features=7):
+def load_se_data(dir_x,dir_c,num_sites, full_date_range,num_static_features=20):
     date_length = len(full_date_range)
     c_dyn = load_timeseries(dir_x, num_sites, date_length)
     X_city_static_annual = np.zeros((date_length,num_sites,num_static_features))
