@@ -33,7 +33,7 @@ class HeteroDataset(Dataset):
         # data['city'].x_dyn -> [num_city, seq_len, features]
         # data['city'].x_static -> [num_city, features]
         data['city'].x_dyn = self.x_city[idx]
-        data['city'].x_static = self.x_city_static
+        data['city'].x_static = self.x_city_static[idx]
 
         for edge_type, edge_index in self.edge_index_dict.items():
             data[edge_type].edge_index = edge_index.clone()

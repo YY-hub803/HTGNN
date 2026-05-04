@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .gru_model import GRULayer
 from .gnn_model import HANLayer,HGTLayer
-from .Prediction_Head import Attention
+
 
 
 class GruHANModel(nn.Module):
@@ -28,7 +28,7 @@ class GruHANModel(nn.Module):
             in_channels=hidden_size,
             out_channels=hidden_size,
             metadata=metadata,
-            heads=1
+            heads=num_heads
         )
         # ===== 4. 时间编码 =====
         self.time_emb = nn.Embedding(max_time_steps, hidden_size)

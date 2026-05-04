@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import torch
+from sympy.physics.units import current
 from torch_geometric.utils import to_undirected
 
 
@@ -15,8 +16,10 @@ def load_timeseries(dict_data, num_sites, date_length):
 
 def load_attribute(dict_data):
     """Load data from constant attributes"""
-    data_list = [np.loadtxt(path, delimiter=",", skiprows=1) for path in dict_data.values()]
-    return np.concatenate(data_list, axis=1)
+    data_dict = {}
+    for key,value in dict_data.items():
+        data_dict[key] = np.loadtxt(value, delimiter=",", skiprows=1)
+    return data_dict
 
 def load_water_data(dir_x, dir_y,num_sites, date_length):
     """
@@ -35,12 +38,18 @@ def load_water_data(dir_x, dir_y,num_sites, date_length):
     return X_water, Y_water
 
 
-def load_se_data(dir_x,dir_c,num_sites, date_length):
+def load_se_data(dir_x,dir_c,num_sites, full_date_range,num_static_features=7):
+    date_length = len(full_date_range)
     c_dyn = load_timeseries(dir_x, num_sites, date_length)
+    X_city_static_annual = np.zeros((date_length,num_sites,num_static_features))
     c_static = load_attribute(dir_c)
+    for t in range(date_length):
+        current_year = str(full_date_range[t].year)
+        X_city_static_annual[t] =  c_static[current_year]
+
     c_dyn = torch.tensor(c_dyn, dtype=torch.float32)
-    c_static = torch.tensor(c_static, dtype=torch.float32)
-    return c_dyn ,c_static
+    c_annual_static = torch.tensor(X_city_static_annual, dtype=torch.float32)
+    return c_dyn ,c_annual_static
 
 
 

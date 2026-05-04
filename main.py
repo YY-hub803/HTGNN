@@ -106,7 +106,8 @@ dir_se_x = {
     "x_pet": os.path.join(dir_SE, 'input_xforce_pet.csv'),
 }
 dir_se_c = {
-    "c_all": os.path.join(dir_SE, 'input_c_all.csv'),
+    "2023": os.path.join(dir_SE, 'input_c_all.csv'),
+    "2024": os.path.join(dir_SE, 'input_c_all.csv'),
 }
 
 dir_info = {
@@ -138,7 +139,7 @@ date_length = len(full_date_range)
 
 # ---------------------- 加载数据 --------------------------
 X, Y = load_water_data(dir_wq_x,dir_wq_y,num_water_nodes,date_length)
-X_city,X_city_static = load_se_data(dir_se_x,dir_se_c,num_cities,date_length)
+X_city,X_city_static = load_se_data(dir_se_x,dir_se_c,num_cities,full_date_range)
 edge_index_dict = build_edge_index_dict(dir_info)
 # ---------------------------------------------------------
 
@@ -157,19 +158,19 @@ Train = HeteroDataset(
     Sample_data['train_x'],
     Sample_data['train_y'],
     Sample_data['train_x_city'],
-    Sample_data['X_city_static'],
+    Sample_data['train_X_static'],
     edge_index_dict=edge_index_dict)
 Val = HeteroDataset(
     Sample_data['val_x'],
     Sample_data['val_y'],
     Sample_data['val_x_city'],
-    Sample_data['X_city_static'],
+    Sample_data['val_X_static'],
     edge_index_dict=edge_index_dict)
 Test = HeteroDataset(
     Sample_data['test_x'],
     Sample_data['test_y'],
     Sample_data['test_x_city'],
-    Sample_data['X_city_static'],
+    Sample_data['test_X_static'],
     edge_index_dict=edge_index_dict)
 torch.save(Test,r'data\dataset\Test_dataset.pt')        # 保存Test数据集用于explain
 # ---------------------------------------------------------
