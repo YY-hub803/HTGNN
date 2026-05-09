@@ -63,6 +63,26 @@ class MixLoss(nn.Module):
     def forward(self, output, target):
         return 0.7*self.mse(output, target) + 0.3*self.mae(output, target)
 
+class HuberLoss(nn.Module):
+    def __init__(self, delta=1.0):
+        super(HuberLoss, self).__init__()
+        self.delta = delta
+
+    def forward(self, output, target):
+        """
+        output: [B, N, T, F]
+        target: [B, N, T, F]
+        """
+        error = output - target
+        abs_error = torch.abs(error)
+        quadratic = torch.minimum(
+            abs_error,
+            torch.tensor(self.delta, device=output.device)
+        )
+        linear = abs_error - quadratic
+        loss = 0.5 * quadratic**2 + self.delta * linear
+        return torch.mean(loss)
+
 def R2(output, target):
     mask = ~np.isnan(target)
     p0 = output[mask]

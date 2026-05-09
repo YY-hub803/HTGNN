@@ -18,11 +18,11 @@ from data.process import get_windows
 parser = argparse.ArgumentParser()
 parser.add_argument('--train',type=bool,default=True,help='Whether to train model')             # 是否训练
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')                        # 随机种子
-parser.add_argument('--freq',type=str,default='4h',help='Frequency.')                           # 时间频率
-parser.add_argument('--model', type=str, default="GruHANModel", help='GruHANModel/GruModel')    # 模型
+parser.add_argument('--freq',type=str,default='1D',help='Frequency.')                           # 时间频率
+parser.add_argument('--model', type=str, default="GruGNNodel", help='GruHANModel/GruModel/GruGNNodel')    # 模型
 parser.add_argument('--epochs', type=int, default=400, help='Number of epochs to train.')       # 训练次数
-parser.add_argument('--hidden', type=int, default=32, help='Number of hidden units.')           # 隐藏层
-parser.add_argument('--batch', type=int, default=16, help='Batch size.')                        # 批量大小
+parser.add_argument('--hidden', type=int, default=64, help='Number of hidden units.')           # 隐藏层
+parser.add_argument('--batch', type=int, default=32, help='Batch size.')                        # 批量大小
 parser.add_argument('--history', type=int, default=32, help='History len.')                     # 历史序列长度
 parser.add_argument('--pred', type=int, default=1, help='Pred len.')                            # 预测长度
 parser.add_argument('--num_heads', type=int, default=4, help='Number of head attentions.')      # 多头注意力
@@ -53,11 +53,13 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODEL_FACTORY = {
     "GruHANModel": model.GruHANModel,
     'GruModel': model.GruModel,
+    "GruGNNodel": model.GruGNNodel,
 }
 Loss_FACTORY = {
     "MSE": crit.MSELoss,
     "MAE": crit.MAELoss,
     "RMSE": crit.RMSELoss,
+    "HuberLoss": crit.HuberLoss,
     "MixLoss": crit.MixLoss,
 }
 
@@ -76,7 +78,7 @@ dir_SE = r"data\SE_data"
 dir_info = r"data\info_data"
 freq = args.freq
 
-output_dir = f"OutPut"
+output_dir = f"Test_OutPut"
 os.makedirs(output_dir, exist_ok=True)
 
 dir_output = os.path.join(output_dir,dir_model)
@@ -90,15 +92,16 @@ else:
     os.makedirs(vis_folder, exist_ok=True)
 
 dir_wq_x = {
-    "x_tp": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
+    # "x_tp": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
     "x_tn": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
     "x_do": os.path.join(dir_WQ, 'input_yobs_DO.csv'),
     "x_TEMP": os.path.join(dir_WQ, 'input_yobs_temp.csv'),
     "x_cod": os.path.join(dir_WQ, 'input_yobs_CODMn.csv'),
+    "x_ntu": os.path.join(dir_WQ, 'input_yobs_NTU.csv'),
 }
 dir_wq_y = {
     "TP": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
-    "TN": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
+    # "TN": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
 }
 
 dir_se_x = {
@@ -106,8 +109,8 @@ dir_se_x = {
     "x_pet": os.path.join(dir_SE, 'input_xforce_pet.csv'),
 }
 dir_se_c = {
-    "2023": os.path.join(dir_SE, 'input_c_all.csv'),
-    "2024": os.path.join(dir_SE, 'input_c_all.csv'),
+    "2023": os.path.join(dir_SE, 'input_c_2023.csv'),
+    "2024": os.path.join(dir_SE, 'input_c_2024.csv'),
 }
 
 dir_info = {

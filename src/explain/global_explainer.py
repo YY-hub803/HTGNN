@@ -124,31 +124,3 @@ class GlobalExplanation:
         plt.savefig(os.path.join(saveFolder,'GlobalFeatureImportance.png'))
         plt.show()
 
-    def plot_node_seq(self, results, target_node_idx,saveFolder, node_names=None):
-        # 计算占比
-        data = np.sum(results['water'][target_node_idx],axis=1)/np.sum(results['water'][target_node_idx])
-
-        data = data[16:]
-        n_timesteps = len(data)
-        x_labels = [f"t-{i}" if i != 0 else "t" for i in range(n_timesteps - 1, -1, -1)]
-        x = np.arange(n_timesteps)
-        width = 0.6
-        fig, ax = plt.subplots(figsize=(4, 3))
-        bar_color = '#425066'
-        ax.bar(x, data, width, color=bar_color, label='Contribution')
-        ax.set_ylabel("Contribution", fontsize=11, fontweight='bold')
-        ax.set_ylim(0, 0.5)
-        ax.set_yticks([0, 0.25, 0.5])  # 根据参考图设置特定刻度
-        ax.tick_params(axis='y', labelsize=10)  # 调整刻度字体大小
-        # 设置 X 轴
-        ax.set_xticks(x)
-        ax.set_xticklabels(x_labels, fontsize=10,rotation=45, ha='right')
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        node_label = node_names[target_node_idx] if node_names else f"Node {target_node_idx}"
-        ax.set_title(f"{node_label}: Contribution from 16 time step", fontsize=12)
-
-        plt.tight_layout()
-        plt.savefig(os.path.join(saveFolder,f'{node_label}Contribution of 16 time step.png'))
-        plt.show()
-

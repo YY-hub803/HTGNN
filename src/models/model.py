@@ -3,6 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .gru_model import GRULayer
 from .gnn_model import HANLayer,HGTLayer
+from torch_geometric.nn import GATv2Conv
 
 
 
@@ -198,7 +199,116 @@ class GruModel(nn.Module):
 
     def forward(self, batch_data, return_attention=False):
         # 提取水质节点时序特征
-        h_water = self.gru_water(batch_data['water'].x)         # [Nodes, hidden_size]
-
+        h_water = self.gru_water(batch_data['water'].x)
         prediction = self.dense(torch.relu(h_water[:,-1,:]))
         return prediction
+
+class GruGNNodel(nn.Module):
+    def __init__(self,water_dyn_feat, city_dyn_feat, city_static_feat,num_heads,
+                hidden_size, output_size, num_layers,drop_rate,metadata,max_time_steps=32):
+        super(GruGNNodel, self).__init__()
+        self.ny = output_size
+        self.hidden_size = hidden_size
+        # 1. 动态特征的时序编码器
+        self.gru_water = GRULayer(input_size=water_dyn_feat,
+                                hidden_size=hidden_size,
+                                num_layers=num_layers,
+                                drop_rate=drop_rate)
+        # ===== 3. HGT=====
+        self.gnn = GATv2Conv(
+            in_channels=hidden_size,
+            out_channels=hidden_size // num_heads,
+            heads=num_heads
+        )
+        # ===== 4. 时间编码 =====
+        self.time_emb = nn.Embedding(max_time_steps, hidden_size)
+        # ===== 5. Temporal Attention =====
+        encoder_layer = nn.TransformerEncoderLayer(
+            d_model=hidden_size,
+            nhead=num_heads,
+            dim_feedforward=hidden_size * 4,
+            dropout=drop_rate,
+            batch_first=True
+        )
+        self.temporal_encoder = nn.TransformerEncoder(
+            encoder_layer,
+            num_layers=2
+        )
+        # ===== 7. FFN（Transformer 标准块）=====
+        self.ffn = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size * 2),
+            nn.ReLU(),
+            nn.Dropout(drop_rate),
+            nn.Linear(hidden_size * 2, hidden_size)
+        )
+
+        # ===== 9. Norm =====
+        self.norm1 = nn.LayerNorm(hidden_size)
+        self.norm2 = nn.LayerNorm(hidden_size)
+        self.norm3 = nn.LayerNorm(hidden_size)
+
+        # ===== 10. Predictor =====
+        self.predictor = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.ReLU(),
+            nn.Dropout(drop_rate),
+            nn.Linear(hidden_size, output_size)
+        )
+
+    def causal_mask(self, T, device):
+        return torch.triu(
+            torch.ones(T, T, device=device) * -1e9,
+            diagonal=1
+        )
+
+    def forward(self, batch_data, return_attention=False):
+
+        # 提取水质节点时序特征
+        h_water = self.gru_water(batch_data['water'].x)         # [Nodes, hidden_size]
+        Nw, T, H = h_water.shape
+        edge_index = batch_data.edge_index_dict[('water', 'flows_to', 'water')]
+        # 将动态时序状态与静态 GDP 等拼接
+        water_time_outputs = []
+
+        for t in range(T):
+            out = self.gnn(h_water[:,t,:], edge_index)
+            water_time_outputs.append(out)  # [Nw, H]
+        # =========================
+        # Step 3: 拼接时间维
+        # =========================
+        h_water_time = torch.stack(water_time_outputs, dim=1)  # [Nw, T, H]
+        # =========================
+        # Step 4: 时间编码
+        # =========================
+        time_ids = torch.arange(T, device=h_water_time.device)
+        time_emb = self.time_emb(time_ids)  # [T, H]
+        h_water_time = h_water_time + time_emb.unsqueeze(0)
+
+        # =========================
+        # Step 5: Temporal Attention
+        # =========================
+        mask = self.causal_mask(T, h_water_time.device)
+        h_water_temp = self.temporal_encoder(
+            h_water_time,mask=mask
+        )
+        h_water_temp = self.norm1(h_water_temp + h_water_time)
+
+        # 取最后时刻（或 mean）
+        h_last = h_water_temp[:, -1, :]
+        h_mean = h_water_temp.mean(dim=1)
+        h_max = torch.logsumexp(h_water_temp, dim=1)
+        h_water_final = h_last + h_mean + h_max+h_water[:, -1, :] # [Nw, H]
+        h = self.norm2(h_water_final)
+
+        # =========================
+        # Step 7: FFN
+        # =========================
+        h = h + self.ffn(h)
+        h = self.norm3(h)
+
+        # =========================
+        # Step 8: 预测
+        # =========================
+        pred = self.predictor(h)
+
+        return pred.view(-1,self.ny)
