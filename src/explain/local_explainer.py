@@ -39,7 +39,12 @@ class LocalExplanation:
         out = self.model(data)  # 输出形状: [14,2]
 
         regional_total_pollution = out[self.target_water_idx,self.target_var_idx].sum()
-
+        regional_total_pollution = (
+                regional_total_pollution
+                + 0 * w_x.sum()
+                + 0 * c_dyn.sum()
+                + 0 * c_static.sum()
+        )
         return regional_total_pollution.unsqueeze(0)
 
     def explain(self,n_steps=20, save_path=None):
@@ -66,7 +71,7 @@ class LocalExplanation:
             attributions = self.ig.attribute(
                 inputs=(w_x, c_dyn, c_static),
                 baselines=baselines,
-                n_steps=n_steps
+                n_steps=n_steps,
             )
             self.model.eval()
 
@@ -76,6 +81,7 @@ class LocalExplanation:
             global_water_attr += attr_w
             global_city_dyn_attr += attr_c_dyn
             global_city_static_attr += attr_c_static
+            torch.cuda.empty_cache()
         results = {
             'water': global_water_attr,
             'city_dyn': global_city_dyn_attr,
@@ -86,15 +92,16 @@ class LocalExplanation:
     def plot_node_pie(self,results,target_idx,saveFolder):
         total_importance = np.sum(results['water'])+np.sum(results['city_dyn'])+np.sum(results['city_static'])
         water_pct = np.sum(results['water'],axis=(1,2))/total_importance
-        city_dyn_pct = np.sum(results['city_dyn'],axis=(1,2))/total_importance
-        city_static_pct = np.sum(results['city_static'],axis=1)/total_importance
+        meteo_dyn_pct = np.sum(results['city_dyn'][:, :, 0:3], axis=(1, 2)) / total_importance
+        city_static_pct = np.sum(np.sum(results['city_static'],axis=1)+np.sum(results['city_dyn'][:,:,3:5],axis=(1,2)))/total_importance
         self_pct = water_pct[target_idx]
         other_water_pct = np.sum(water_pct)-self_pct
-        other_city_pct = np.sum(city_static_pct)+np.sum(city_dyn_pct)
+        meteo_pct = np.sum(meteo_dyn_pct)
+        other_city_pct = np.sum(city_static_pct)
 
-        data = [self_pct, other_water_pct, other_city_pct]
-        colors = ['#4A5A6A', '#A8A8A8', '#B00000']
-        labels = ['Self', 'Other Water Nodes', 'City Nodes']
+        data = [self_pct, other_water_pct, other_city_pct,meteo_pct]
+        colors = ['#4A5A6A', '#A8A8A8', '#B00000','#2E86AB']
+        labels = ['Self', 'Other Water Nodes', 'City Nodes','Meteo']
 
         fig, ax = plt.subplots(figsize=(3, 3))
 
@@ -118,7 +125,6 @@ class LocalExplanation:
         # 计算占比
         data = np.sum(results['water'][target_node_idx],axis=1)/np.sum(results['water'][target_node_idx])
 
-        data = data[16:]
         n_timesteps = len(data)
         x_labels = [f"t-{i}" if i != 0 else "t" for i in range(n_timesteps - 1, -1, -1)]
         x = np.arange(n_timesteps)
@@ -148,11 +154,11 @@ class LocalExplanation:
         colors = []
         result_importance = {
             'water': np.sum(results['water'],axis=(0,1)),
-            'city_dyn':np.sum(results['city_dyn'],axis=(0,1)),
-            'city_static':np.sum(results['city_static'],axis=0),
+            'city_dyn':np.sum(results['city_dyn'][:,:,0:3],axis=(0,1)),
+            'city_static':np.hstack([np.sum(results['city_static'],axis=0),np.sum(results['city_dyn'][:,:,3:],axis=(0,1))]),
         }
-        categories = ['Water_x', 'City_dyn', 'City_se']
-        category_colors = ['#3498db', '#e74c3c', '#2ecc71']
+        categories = ['Water', 'Meteo', 'Socioeconomic']
+        category_colors = ['#4A5A6A', '#2E86AB', '#B00000']
 
         # 合并所有特征及其类别颜色
         for category, color in zip(['water', 'city_dyn', 'city_static'], category_colors):
@@ -164,9 +170,7 @@ class LocalExplanation:
         all_values = np.array(all_values)
         all_names = np.array(all_names)
         colors = np.array(colors)
-
         idx = np.argsort(all_values)[::-1][:top_k]  # 取前 K 个
-
         plt.figure(figsize=(12, 6))
         bars = plt.barh(all_names[idx][::-1], all_values[idx][::-1], color=colors[idx][::-1])
         plt.xlabel('Feature Importance')
@@ -176,11 +180,10 @@ class LocalExplanation:
         legend_patches = [mpatches.Patch(color=color, label=category)
                         for category, color in zip(categories, category_colors)]
         plt.legend(handles=legend_patches, title='Feature Types', loc='lower right')
-
         # 添加标注
         for bar in bars:
             width = bar.get_width()
-            plt.text(width + 0.01, bar.get_y() + bar.get_height() / 2, f'{width:.2f}', va='center')
+            plt.text(width, bar.get_y() + bar.get_height() / 2, f'{width:.2f}', va='center')
         plt.tight_layout()
         plt.savefig(os.path.join(saveFolder,f'station{target_node_idx}FeatureImportance.png'))
         plt.show()

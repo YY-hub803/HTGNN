@@ -49,6 +49,7 @@ class NSELoss(nn.Module):
 
         return nse
 
+
 class MAELoss(nn.Module):
     def __init__(self):
         super(MAELoss, self).__init__()
@@ -61,10 +62,10 @@ class MixLoss(nn.Module):
         self.mse = MSELoss()
         self.mae = MAELoss()
     def forward(self, output, target):
-        return 0.7*self.mse(output, target) + 0.3*self.mae(output, target)
+        return 0.4*self.mse(output, target) + 0.6*self.mae(output, target)
 
 class HuberLoss(nn.Module):
-    def __init__(self, delta=1.0):
+    def __init__(self, delta=2.5):
         super(HuberLoss, self).__init__()
         self.delta = delta
 
@@ -82,6 +83,20 @@ class HuberLoss(nn.Module):
         linear = abs_error - quadratic
         loss = 0.5 * quadratic**2 + self.delta * linear
         return torch.mean(loss)
+
+
+class ImpHuberLoss(nn.Module):
+    def __init__(self):
+        super(ImpHuberLoss, self).__init__()
+        self.huber = HuberLoss(delta=1.0)
+        self.peak_threshold = 0.02
+    def forward(self, output, target):
+        base_loss = self.huber(output, target)
+        weights = torch.where(torch.abs(target) > self.peak_threshold,
+                            torch.tensor(3.0).to(target.device),
+                            torch.tensor(1.0).to(target.device))
+
+        return torch.mean(base_loss * weights)
 
 def R2(output, target):
     mask = ~np.isnan(target)

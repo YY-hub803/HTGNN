@@ -18,16 +18,16 @@ from data.process import get_windows
 parser = argparse.ArgumentParser()
 parser.add_argument('--train',type=bool,default=True,help='Whether to train model')             # 是否训练
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')                        # 随机种子
-parser.add_argument('--freq',type=str,default='1D',help='Frequency.')                           # 时间频率
-parser.add_argument('--model', type=str, default="GruGNNodel", help='GruHANModel/GruModel/GruGNNodel')    # 模型
+parser.add_argument('--freq',type=str,default='7D',help='Frequency.')                           # 时间频率
+parser.add_argument('--model', type=str, default="GnnModel", help='GruHANModel/GnnModel/MeteoModel/SocioEcoModel')    # 模型
 parser.add_argument('--epochs', type=int, default=400, help='Number of epochs to train.')       # 训练次数
-parser.add_argument('--hidden', type=int, default=64, help='Number of hidden units.')           # 隐藏层
+parser.add_argument('--hidden', type=int, default=16, help='Number of hidden units.')           # 隐藏层
 parser.add_argument('--batch', type=int, default=32, help='Batch size.')                        # 批量大小
-parser.add_argument('--history', type=int, default=32, help='History len.')                     # 历史序列长度
+parser.add_argument('--history', type=int, default=4, help='History len.')                     # 历史序列长度
 parser.add_argument('--pred', type=int, default=1, help='Pred len.')                            # 预测长度
 parser.add_argument('--num_heads', type=int, default=4, help='Number of head attentions.')      # 多头注意力
 parser.add_argument('--num_layers',type=int, default=2, help='Number of layers.')               # 模块层数
-parser.add_argument('--dropout', type=float, default=0.2, help='Dropout rate.')                 # 丢弃率
+parser.add_argument('--dropout', type=float, default=0.1, help='Dropout rate.')                 # 丢弃率
 parser.add_argument('--lossFun',type=str,default='RMSE',help='Loss function')                   # 损失函数
 parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate.')            # 学习率
 parser.add_argument('--weights',type=bool,default=False,help='Whether to return attn_weights.')  # 是否返回语义权重
@@ -53,13 +53,15 @@ DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 MODEL_FACTORY = {
     "GruHANModel": model.GruHANModel,
     'GruModel': model.GruModel,
-    "GruGNNodel": model.GruGNNodel,
+    "MeteoModel":model.MeteoModel,
+    "GnnModel":model.GnnModel,
+    "SocioEcoModel":model.SocioEcoModel,
 }
 Loss_FACTORY = {
     "MSE": crit.MSELoss,
     "MAE": crit.MAELoss,
     "RMSE": crit.RMSELoss,
-    "HuberLoss": crit.HuberLoss,
+    "Huber": crit.HuberLoss,
     "MixLoss": crit.MixLoss,
 }
 
@@ -78,7 +80,7 @@ dir_SE = r"data\SE_data"
 dir_info = r"data\info_data"
 freq = args.freq
 
-output_dir = f"Test_OutPut"
+output_dir = f"Diff-OutPut"
 os.makedirs(output_dir, exist_ok=True)
 
 dir_output = os.path.join(output_dir,dir_model)
@@ -92,23 +94,31 @@ else:
     os.makedirs(vis_folder, exist_ok=True)
 
 dir_wq_x = {
-    # "x_tp": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
-    "x_tn": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
-    "x_do": os.path.join(dir_WQ, 'input_yobs_DO.csv'),
-    "x_TEMP": os.path.join(dir_WQ, 'input_yobs_temp.csv'),
-    "x_cod": os.path.join(dir_WQ, 'input_yobs_CODMn.csv'),
-    "x_ntu": os.path.join(dir_WQ, 'input_yobs_NTU.csv'),
+    "x_tp": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
+    # "x_pre": os.path.join(dir_WQ,'input_xforce_prcp.csv')
+    # "x_tn": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
+    # "x_do": os.path.join(dir_WQ, 'input_yobs_DO.csv'),
+    # "x_TEMP": os.path.join(dir_WQ, 'input_yobs_temp.csv'),
+    # "x_cod": os.path.join(dir_WQ, 'input_yobs_CODMn.csv'),
+    # "x_ntu": os.path.join(dir_WQ, 'input_yobs_NTU.csv'),
+    # "x_pre": os.path.join(dir_WQ, 'input_x_pre.csv'),
 }
 dir_wq_y = {
     "TP": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
     # "TN": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
+    # "DiffTP": os.path.join(dir_WQ, 'input_Diff_TP.csv')
 }
 
 dir_se_x = {
     "x_pre": os.path.join(dir_SE, 'input_xforce_prcp.csv'),
     "x_pet": os.path.join(dir_SE, 'input_xforce_pet.csv'),
+    "x_temp": os.path.join(dir_SE, 'input_xforce_TEMP.csv'),
+    "x_NDVI": os.path.join(dir_SE,'input_xforce_NDVI.csv'),
+    "x_Light": os.path.join(dir_SE,'input_xforce_Light.csv'),
 }
 dir_se_c = {
+    "2021": os.path.join(dir_SE, 'input_c_2021.csv'),
+    "2022": os.path.join(dir_SE, 'input_c_2022.csv'),
     "2023": os.path.join(dir_SE, 'input_c_2023.csv'),
     "2024": os.path.join(dir_SE, 'input_c_2024.csv'),
 }
@@ -116,6 +126,7 @@ dir_se_c = {
 dir_info = {
     'city_to_water': os.path.join(dir_info, 'city_to_water.csv'),
     'water_to_water': os.path.join(dir_info, 'water_to_water.csv'),
+    'city_to_city': os.path.join(dir_info, 'city_to_city.csv'),
     'water_points': os.path.join(dir_info, 'water_points.csv'),
     'city_points': os.path.join(dir_info, 'city_points.csv'),
     'Date_Range': os.path.join(dir_info, 'D_R.csv'),
@@ -238,7 +249,7 @@ if 'y_out' in locals():
     vis_mapping = {
         "DO": lambda: vis.vis_filled(y_true['DO'], y_out['DO'], test_date_range, vis_folder, "DO"),
         "TP": lambda: vis.vis_filled(y_true['TP'], y_out['TP'], test_date_range, vis_folder, "TP"),
-        "NTU": lambda: vis.vis_filled(y_true['NTU'], y_out['NTU'], test_date_range, vis_folder, "NTU"),
+        "DiffTP": lambda: vis.vis_filled(y_true['DiffTP'], y_out['DiffTP'], test_date_range, vis_folder, "DiffTP"),
         "TN": lambda: vis.vis_filled(y_true['TN'], y_out['TN'], test_date_range, vis_folder, "TN"),
         "EC": lambda: vis.vis_filled(y_true['EC'], y_out['EC'], test_date_range, vis_folder, "EC")
     }

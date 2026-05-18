@@ -38,7 +38,7 @@ def load_water_data(dir_x, dir_y,num_sites, date_length):
     return X_water, Y_water
 
 
-def load_se_data(dir_x,dir_c,num_sites, full_date_range,num_static_features=20):
+def load_se_data(dir_x,dir_c,num_sites, full_date_range,num_static_features=6):
     date_length = len(full_date_range)
     c_dyn = load_timeseries(dir_x, num_sites, date_length)
     X_city_static_annual = np.zeros((date_length,num_sites,num_static_features))
@@ -71,7 +71,10 @@ def build_edge_index_dict(dir_edges):
     )
     edge_city_water = load_edge_index(dir_edges["city_to_water"], is_undirected=False)
     edge_index_dict[('city', 'impact', 'water')] = edge_city_water
-    edge_index_dict[('water', 'impacted_by', 'city')] = edge_city_water.flip([0])
+
+    edge_city_city = load_edge_index(dir_edges["city_to_city"], is_undirected=True)
+    edge_index_dict[('city', 'impact', 'city')] = edge_city_city
+
     for edge_type, tensor in edge_index_dict.items():
         print(f"关系 {edge_type} 加载完成: 边数量 = {tensor.shape[1]}")
 
