@@ -148,9 +148,8 @@ class SocioEcoModel(nn.Module):
             for conv in self.conv:
                 m = conv(x_dict, batch_data.edge_index_dict)
                 z_w = m['water']+z_w  # [Nw, H]
-                z_c = m['city']+z_c
+                h_c = m['city']+z_c
             h =self.cell_water(z_w,h)
-            h_c = self.cell_city(z_c,h_c)
         h = self.norm(h)
         pred = self.predictor(h)
         return pred.view(-1,self.ny)

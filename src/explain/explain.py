@@ -15,13 +15,13 @@ dir_info = {
     'city_points': r'D:\Program\HTGNN\data/info_data/city_points.csv'}
 
 dataset = torch.load(r'D:\Program\HTGNN\data\dataset\Test_dataset.pt')
-model = torch.load(r'D:\Program\HTGNN\ABS-OutPut\GruHANModel_B32_H16_L4_NL2_NH4_lr0.0010\best_model.pt',weights_only=False)
+model = torch.load(r'D:\Program\HTGNN\Random42OutPut\GruHANModel_B32_H16_L4_NL2_NH4_lr0.0010\best_model.pt',weights_only=False)
 edge_index_dict = build_edge_index_dict(dir_info)
 target_var_idx=0        # 0:TP 1:TN
 features_nm_dict = {
     'water':["TP"],
     'city_dyn':['Pre','Pet','TEMP'],
-    'city_static':['Cropland','Forest','Impervious','Other', 'Poultry','Fertilizer','NDVI','Light']
+    'city_static':['Cropland','Forest','Impervious','Other',"In_TP",'NDVI','Light']
 }
 explain_vis = 'vis_explain'
 os.makedirs(explain_vis, exist_ok=True)

@@ -7,20 +7,28 @@ import shutil
 import argparse
 import numpy as np
 import pandas as pd
+import sys
+from pathlib import Path
+# 获取当前脚本所在目录
+current_dir = Path(__file__).resolve().parent
+# 往上退两级，到项目根目录（src/evaluate → src → 项目根目录）
+project_root = current_dir.parent.parent
+# 把项目根目录加入 Python 搜索路径
+sys.path.append(str(project_root))
 from src.models import model
-from src.utils import crit,vis
-from src.train import train,test,infer
 from torch.nn.parameter import Parameter
-from src.utils.utils import HeteroDataset,get_loader
+from src.utils.utils import HeteroDataset
+from src.train import test
+from src.utils import crit
+from torch_geometric.loader import DataLoader
 from data.load_data import load_water_data,load_se_data,build_edge_index_dict
-from data.process import get_windows
+from data.process import create_sliding_windows
 
-# hyper_params setting
 parser = argparse.ArgumentParser()
 parser.add_argument('--train',type=bool,default=True,help='Whether to train model')             # 是否训练
 parser.add_argument('--seed', type=int, default=42, help='Random seed.')                        # 随机种子
 parser.add_argument('--freq',type=str,default='7D',help='Frequency.')                           # 时间频率
-parser.add_argument('--model', type=str, default="SocioEcoModel", help='GruHANModel/GnnModel/MeteoModel/SocioEcoModel')    # 模型
+parser.add_argument('--model', type=str, default="GnnModel", help='GruHANModel/GnnModel/MeteoModel/SocioEcoModel')    # 模型
 parser.add_argument('--epochs', type=int, default=400, help='Number of epochs to train.')       # 训练次数
 parser.add_argument('--hidden', type=int, default=16, help='Number of hidden units.')           # 隐藏层
 parser.add_argument('--batch', type=int, default=32, help='Batch size.')                        # 批量大小
@@ -33,9 +41,6 @@ parser.add_argument('--lossFun',type=str,default='RMSE',help='Loss function')   
 parser.add_argument('--lr', type=float, default=1e-3, help='Initial learning rate.')            # 学习率
 parser.add_argument('--weights',type=bool,default=False,help='Whether to return attn_weights.')  # 是否返回语义权重
 args = parser.parse_args()
-
-
-
 
 
 def set_seeds(seed_value):
@@ -76,12 +81,13 @@ dir_model = "%s_B%d_H%d_L%d_NL%d_NH%d_lr%.4f" % (
     args.lr,
 )
 
-dir_WQ = r"data\WQ_data"
-dir_SE = r"data\SE_data"
-dir_info = r"data\info_data"
+dir_WQ = r"..\..\data\WQ_data"
+dir_SE = r"..\..\data\SE_data"
+dir_info = r"..\..\data\info_data"
 freq = args.freq
-
-output_dir = f"Random{args.seed}OutPut"
+full_data_dir = f'output'
+os.makedirs(full_data_dir, exist_ok=True)
+output_dir = f"..\..\Random{args.seed}OutPut"
 os.makedirs(output_dir, exist_ok=True)
 
 dir_output = os.path.join(output_dir,dir_model)
@@ -96,18 +102,9 @@ else:
 
 dir_wq_x = {
     "x_tp": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
-    # "x_pre": os.path.join(dir_WQ,'input_xforce_prcp.csv')
-    # "x_tn": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
-    # "x_do": os.path.join(dir_WQ, 'input_yobs_DO.csv'),
-    # "x_TEMP": os.path.join(dir_WQ, 'input_yobs_temp.csv'),
-    # "x_cod": os.path.join(dir_WQ, 'input_yobs_CODMn.csv'),
-    # "x_ntu": os.path.join(dir_WQ, 'input_yobs_NTU.csv'),
-    # "x_pre": os.path.join(dir_WQ, 'input_x_pre.csv'),
 }
 dir_wq_y = {
     "TP": os.path.join(dir_WQ, 'input_yobs_TP.csv'),
-    # "TN": os.path.join(dir_WQ, 'input_yobs_TN.csv'),
-    # "DiffTP": os.path.join(dir_WQ, 'input_Diff_TP.csv')
 }
 
 dir_se_x = {
@@ -132,7 +129,7 @@ dir_info = {
     'city_points': os.path.join(dir_info, 'city_points.csv'),
     'Date_Range': os.path.join(dir_info, 'D_R.csv'),
 }
-
+json_path = r'D:\Program\HTGNN\data\dataset\train_stats.json'
 # ---------------------- 站点和日期 ----------------------
 city_points = pd.read_csv(dir_info['city_points'],encoding='gbk')
 water_points = pd.read_csv(dir_info['water_points'])
@@ -148,52 +145,38 @@ end_date = Date_Range['end'].max()
 
 full_date_range = pd.date_range(start=start_date, end=end_date, freq=freq)
 date_length = len(full_date_range)
-
-# ---------------------------------------------------------
-
-
 # ---------------------- 加载数据 --------------------------
 X, Y = load_water_data(dir_wq_x,dir_wq_y,num_water_nodes,date_length)
 X_city,X_city_static = load_se_data(dir_se_x,dir_se_c,num_cities,full_date_range)
 edge_index_dict = build_edge_index_dict(dir_info)
+with open(json_path, "r", encoding="utf-8") as f:
+    train_stats = json.load(f)
+stats_tensor = {}
+for key, val in train_stats.items():
+    stats_tensor[key] = torch.tensor(val, dtype=torch.float32)
 # ---------------------------------------------------------
+X_norm = (X-stats_tensor['x_mean'])/stats_tensor['x_std']
+Y_norm = (Y-stats_tensor['y_mean'])/stats_tensor['y_std']
+X_city_norm = (X_city-stats_tensor['x_city_mean'])/stats_tensor['x_city_std']
+X_city_static_norm = (X_city_static-stats_tensor['x_static_mean'])/stats_tensor['x_static_std']
 
-# ---------------------- 创建数据集 -------------------------
-train_ratio = 0.6
-val_ratio = 0.2
-train_end = int(date_length * train_ratio)
-val_end = int(date_length * val_ratio)
-test_date_range = full_date_range[train_end + val_end + args.history:,]
-Sample_data,data_splits, train_stats=get_windows(X,Y,X_city,X_city_static,
-                                                train_ratio,val_ratio,
-                                                args.history,
-                                                args.pred)
-with open("data/dataset/train_stats.json", "w", encoding="utf-8") as f:
-    json.dump(train_stats, f, ensure_ascii=False, indent=4)
-Train = HeteroDataset(
-    Sample_data['train_x'],
-    Sample_data['train_y'],
-    Sample_data['train_x_city'],
-    Sample_data['train_X_static'],
-    edge_index_dict=edge_index_dict)
-Val = HeteroDataset(
-    Sample_data['val_x'],
-    Sample_data['val_y'],
-    Sample_data['val_x_city'],
-    Sample_data['val_X_static'],
-    edge_index_dict=edge_index_dict)
-Test = HeteroDataset(
-    Sample_data['test_x'],
-    Sample_data['test_y'],
-    Sample_data['test_x_city'],
-    Sample_data['test_X_static'],
-    edge_index_dict=edge_index_dict)
-torch.save(Test,r'data\dataset\Test_dataset.pt')        # 保存Test数据集用于explain
-# ---------------------------------------------------------
 
-# ---------------------- 实例化模型和损失函数 -------------------------
-# 所有数据的输入维度与图结构不变
-sample_data = Train[0]
+X_seq, Y_seq,X_city_seq,X_static_seq = create_sliding_windows(X_norm,Y_norm,X_city_norm,X_city_static_norm,args.history,args.pred)
+
+
+
+
+
+dataset = HeteroDataset(
+    X_seq,
+    Y_seq,
+    X_city_seq,
+    X_static_seq,
+    edge_index_dict=edge_index_dict)
+
+
+
+sample_data = dataset[0]
 metadata = sample_data.metadata()
 water_dyn_feat = sample_data['water'].x.shape[-1]
 city_dyn_feat = sample_data['city'].x_dyn.shape[-1]
@@ -201,24 +184,12 @@ city_static_feat = sample_data['city'].x_static.shape[-1]
 print(f"水质动态特征数: {water_dyn_feat}")
 print(f"城市动态特征数: {city_dyn_feat}")
 print(f"城市静态特征数: {city_static_feat}")
+data_loader= DataLoader(dataset, batch_size=args.batch, shuffle=False)
+
 model = MODEL_FACTORY[args.model](water_dyn_feat,city_dyn_feat,city_static_feat,
                     args.num_heads,args.hidden, len(dir_wq_y),
                     args.num_layers,
                     args.dropout,metadata)
-print(f"模型参数: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
-lossFun = Loss_FACTORY[args.lossFun]()
-# ------------------------------------------------------------------
-
-# ---------------------- 创建Loder并训练模型 -------------------------
-train_loader ,val_loader,test_loader= get_loader(Train,Val,Test,args.batch)
-if args.train:
-    best_model = train.train(
-        model,train_loader, val_loader,lossFun,
-        args.epochs,
-        args.lr,
-        dir_output,DEVICE)
-
-# ------------------------------------------------------------------
 
 # ---------------------- 加载模型用于评估 ----------------------------
 model_files = glob.glob(os.path.join(dir_output, "*.pt"))
@@ -229,36 +200,8 @@ print(f">>> 加载原始模型进行插补: {latest_model_path}")
 model_raw = torch.load(latest_model_path,weights_only=False)
 Target_Name = list(dir_wq_y.keys())
 
-if args.weights:
-    y_out, y_true,semantic_weights = test.evaluate(
-        model_raw, test_loader,
-        train_stats['y_mean'], train_stats['y_std'],
-        water_nm,num_water_nodes,Target_Name,
-        args.pred,dir_output,DEVICE,args.weights)
-else:
-    y_out, y_true = test.evaluate(
-        model_raw, test_loader,
-        train_stats['y_mean'], train_stats['y_std'],
-        water_nm,num_water_nodes,Target_Name,
-        args.pred,dir_output,DEVICE)
-
-# ------------------------------------------------------------------
-
-# ---------------------- 可视化测试集的效果 ---------------------------
-
-if 'y_out' in locals():
-    print("------------------------ 生成可视化图表 ------------------------------")
-    vis_mapping = {
-        "DO": lambda: vis.vis_filled(y_true['DO'], y_out['DO'], test_date_range, vis_folder, "DO"),
-        "TP": lambda: vis.vis_filled(y_true['TP'], y_out['TP'], test_date_range, vis_folder, "TP"),
-        "DiffTP": lambda: vis.vis_filled(y_true['DiffTP'], y_out['DiffTP'], test_date_range, vis_folder, "DiffTP"),
-        "TN": lambda: vis.vis_filled(y_true['TN'], y_out['TN'], test_date_range, vis_folder, "TN"),
-        "EC": lambda: vis.vis_filled(y_true['EC'], y_out['EC'], test_date_range, vis_folder, "EC")
-    }
-    for var_name, vis_func in vis_mapping.items():
-        if var_name in Target_Name:
-            vis_func()  # 执行对应变量的可视化函数
-            print(f"已执行 {var_name} 的可视化，保存至 {vis_folder}")
-
-
-# ------------------------------------------------------------------
+y_out, y_true = test.evaluate(
+    model_raw, data_loader,
+    stats_tensor['y_mean'], stats_tensor['y_std'],
+    water_nm, num_water_nodes, Target_Name,
+    args.pred, full_data_dir, DEVICE)
