@@ -1,0 +1,87 @@
+# D:\Program\HTGNN\configs/config.yaml
+# 水质预测项目配置文件
+
+# ==================== 路径配置 ====================
+base_dir: D:/Program/HTGNN
+
+# 数据目录
+data_dirs:
+  wq: ${base_dir}/data/WQ_data
+  se: ${base_dir}/data/SE_data
+  info: ${base_dir}/data/info_data
+  ea: ${base_dir}/data/EA_data
+
+# 输出目录
+output_dir: ${base_dir}/TestPut
+
+# ==================== 文件路径配置 ====================
+
+# 水质数据路径
+wq_x:
+  x_tp: ${data_dirs.wq}/input_yobs_TP.csv
+  x_tn: ${data_dirs.wq}/input_yobs_TN.csv
+
+wq_y:
+  TP: ${data_dirs.wq}/input_yobs_TP.csv
+  TN: ${data_dirs.wq}/input_yobs_TN.csv
+
+# 社会经济数据路径
+se_x:
+  x_pre: ${data_dirs.se}/input_xforce_pre.csv
+  x_temp: ${data_dirs.se}/input_xforce_temp.csv
+  x_Light: ${data_dirs.se}/input_xforce_Light.csv
+
+se_c:
+  '2021': ${data_dirs.se}/input_c_2021.csv
+  '2022': ${data_dirs.se}/input_c_2022.csv
+  '2023': ${data_dirs.se}/input_c_2023.csv
+  '2024': ${data_dirs.se}/input_c_2024.csv
+
+# 边属性数据路径
+ea_config:
+  e_maxLevel: ${data_dirs.ea}/input_edge_MaxT_diff.csv
+  e_minLevel: ${data_dirs.ea}/input_edge_MinT_diff.csv
+
+# 图结构信息路径
+info_config:
+  city_to_water: ${data_dirs.info}/city_to_water.csv
+  water_to_water: ${data_dirs.info}/water_to_water.csv
+  city_to_city: ${data_dirs.info}/city_to_city.csv
+  water_points: ${data_dirs.info}/water_points.csv
+  city_points: ${data_dirs.info}/city_points.csv
+  Date_Range: ${data_dirs.info}/D_R.csv
+
+# ==================== 模型名称配置 ====================
+model_names:
+  - GruEAHGTModel
+  - GruHANModel
+  - GruModel
+  - MeteoModel
+  - GnnModel
+
+# ==================== 模型名称配置 ====================
+loss_name:
+  - RMSE
+  - MAE
+  - Huber
+  - MixLoss
+  - MSE
+# ==================== 训练配置 ====================
+train_config:
+  train: true
+  seed: 42
+  freq: 7D
+  model: GruEAHGTModel
+  epochs: 400
+  hidden: 16
+  batch: 12
+  history: 4
+  pred: 1
+  num_heads: 4
+  num_layers: 2
+  dropout: 0.1
+  loss_fun: RMSE
+  lr: 0.001
+  weights: True
+  train_ratio: 0.6
+  val_ratio: 0.2

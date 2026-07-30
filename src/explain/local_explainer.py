@@ -10,13 +10,11 @@ from captum.attr import IntegratedGradients
 plt.style.use('seaborn-v0_8-white')
 plt.rcParams['font.family'] = ['Times New Roman',"SimSun",'SimHei']
 plt.rcParams['axes.unicode_minus'] = False
-
-class LocalExplanation:
-    def __init__(self, model,dataset,edge_index_dict,target_water_idx,target_var_idx,device):
+class GlobalExplanation:
+    def __init__(self, model,dataset,edge_index_dict,target_var_idx,device):
         self.model = model.to(device)
         self.data = dataset
         self.edge_index_dict = edge_index_dict
-        self.target_water_idx = target_water_idx
         self.target_var_idx = target_var_idx
         self.device = device
         self.num_samples = len(self.data)
@@ -38,7 +36,7 @@ class LocalExplanation:
 
         out = self.model(data)  # 输出形状: [14,2]
 
-        regional_total_pollution = out[self.target_water_idx,self.target_var_idx].sum()
+        regional_total_pollution = out[:,self.target_var_idx].sum()
         regional_total_pollution = (
                 regional_total_pollution
                 + 0 * w_x.sum()
@@ -54,7 +52,10 @@ class LocalExplanation:
         global_city_dyn_attr = 0.0          # 城市气象
         global_city_static_attr = 0.0       # 城市静态
 
-        for sample in tqdm(self.data, desc=f"站点 {self.target_water_idx} 全局分析"):
+        all_value = list()
+        all_importance = list()
+
+        for sample in tqdm(self.data, desc=f"全局分析"):
             sample: HeteroData
             w_x = sample['water'].x.to(self.device).requires_grad_()
             c_dyn = sample['city'].x_dyn.to(self.device).requires_grad_()
@@ -75,19 +76,181 @@ class LocalExplanation:
             )
             self.model.eval()
 
-            attr_w = np.abs(attributions[0].squeeze(0).cpu().detach().numpy())
-            attr_c_dyn = np.abs(attributions[1].squeeze(0).cpu().detach().numpy())
-            attr_c_static = np.abs(attributions[2].squeeze(0).cpu().detach().numpy())
+            water_score = attributions[0].squeeze(0).cpu().detach().numpy()
+            city_dyn_score = attributions[1].squeeze(0).cpu().detach().numpy()
+            city_static_score = attributions[2].squeeze(0).cpu().detach().numpy()
+
+            attr_w = np.abs(water_score)
+            attr_c_dyn = np.abs(city_dyn_score)
+            attr_c_static = np.abs(city_static_score)
+
+            sample_importance = np.concatenate([np.mean(water_score, axis=(0, 1)), np.mean(city_dyn_score, axis=(0, 1)),
+                            np.mean(city_static_score, axis=0)])
+            sample_value = np.concatenate([np.mean(w_x.cpu().detach().numpy(),axis=(0, 1)), np.mean(c_dyn.cpu().detach().numpy(), axis=(0, 1)),
+                            np.mean(c_static.cpu().detach().numpy(), axis=0)])
+            all_value.append(sample_value)
+            all_importance.append(sample_importance)
+
             global_water_attr += attr_w
             global_city_dyn_attr += attr_c_dyn
             global_city_static_attr += attr_c_static
             torch.cuda.empty_cache()
+
         results = {
             'water': global_water_attr,
             'city_dyn': global_city_dyn_attr,
             'city_static':global_city_static_attr,
         }
-        return results
+        Sample = {
+            "value": all_value,
+            "importance": all_importance,
+        }
+        return results,Sample
+
+class LocalExplanation:
+    def __init__(self, model,dataset,edge_index_dict,target_water_idx,target_var_idx,device):
+        self.model = model.to(device)
+        self.data = dataset
+        self.edge_index_dict = edge_index_dict
+        self.target_water_idx = target_water_idx
+        self.target_var_idx = target_var_idx
+        self.device = device
+        self.num_samples = len(self.data)
+        self.ig = IntegratedGradients(self.warped)
+
+    def warped(self,w_x, c_dyn, c_static):
+        data = HeteroData()
+        data['water'].x = w_x.squeeze(0)
+        data['city'].x_dyn = c_dyn.squeeze(0)
+        data['city'].x_static = c_static.squeeze(0)
+
+        num_water_nodes = w_x.shape[0]
+        num_city_nodes = c_dyn.shape[0]
+        data['water'].num_nodes = num_water_nodes
+        data['city'].num_nodes = num_city_nodes
+
+
+        for edge_type, edge_index in self.edge_index_dict.items():
+            data[edge_type].edge_index = edge_index.to(self.device)
+            # 边属性从存储中读取，不参与梯度计算
+            data[edge_type].edge_attr = self.stored_edge_attrs[edge_type].to(self.device)
+
+        out = self.model(data)  # 输出形状: [14,2]
+
+        regional_total_pollution = out[self.target_water_idx,self.target_var_idx]
+        regional_total_pollution = (
+                regional_total_pollution
+                + 0 * w_x.sum()
+                + 0 * c_dyn.sum()
+                + 0 * c_static.sum()
+        )
+        return regional_total_pollution.unsqueeze(0)
+
+    def explain(self,n_steps=5, save_path=None):
+
+        # 计算特征的全局重要性
+        global_water_attr = 0.0             # 水质特征
+        global_city_dyn_attr = 0.0          # 城市气象
+        global_city_static_attr = 0.0       # 城市静态
+        # IG分数以及对应样本的输入特征值
+        all_value = list()
+        all_importance = list()
+
+        threshold = 1e-6
+        num_sample = len(self.data)
+        for sample in tqdm(self.data, desc=f"站点 {self.target_water_idx} 全局分析"):
+            sample: HeteroData
+
+            self.stored_edge_attrs = {}
+            for edge_type in self.edge_index_dict:
+                if 'edge_attr' in sample[edge_type]:
+                    self.stored_edge_attrs[edge_type] = sample[edge_type].edge_attr.clone()
+                else:
+                    num_edges = sample[edge_type].edge_index.size(1)
+                    self.stored_edge_attrs[edge_type] = torch.ones(num_edges, 1)
+
+
+            w_x = sample['water'].x.unsqueeze(0).to(self.device).requires_grad_()
+            c_dyn = sample['city'].x_dyn.unsqueeze(0).to(self.device).requires_grad_()
+            c_static = sample['city'].x_static.unsqueeze(0).to(self.device).requires_grad_()
+
+            # baseline
+            baselines = (
+                torch.zeros_like(w_x),
+                torch.zeros_like(c_dyn),
+                torch.zeros_like(c_static)
+            )
+            self.model.eval()
+            # tuple(0,1,2)对应三类特征(w_x, c_dyn, c_static)
+            with torch.backends.cudnn.flags(enabled=False):
+                attributions = self.ig.attribute(
+                    inputs=(w_x, c_dyn, c_static),
+                    baselines=baselines,
+                    n_steps=n_steps,
+                    internal_batch_size=1
+                )
+            # self.model.eval()
+
+            # IG分数
+            water_score = attributions[0].squeeze(0).cpu().detach().numpy()  # 【N,T,F】
+            city_dyn_score = attributions[1].squeeze(0).cpu().detach().numpy()  # [N,T,F]
+            city_static_score = attributions[2].squeeze(0).cpu().detach().numpy()  # [N,F]
+            n_w_x = w_x.cpu().squeeze(0).detach().numpy()
+            n_c_dyn = c_dyn.cpu().squeeze(0).detach().numpy()
+            n_c_static = c_static.cpu().squeeze(0).detach().numpy()
+            # 对分数求绝对值，用于计算全局重要性
+            attr_w = np.abs(water_score)
+            attr_c_dyn = np.abs(city_dyn_score)
+            attr_c_static = np.abs(city_static_score)
+
+            # 取出目标节点自身特征的分数，，上游水质节点特征的分数，，city节点特征的分数
+            # 取出目标节点自身特征的分数，，上游水质节点特征的分数,对时间序列求平均
+            wq_self_score = np.sum(water_score[self.target_water_idx],axis=0)
+            wq_self_val = np.mean(n_w_x[self.target_water_idx],axis=0)
+            wq_idx = np.where(np.sum(attr_w, axis=(1, 2)) > threshold)[0]
+            selected_wq_idx = wq_idx[wq_idx != self.target_water_idx]
+            if len(selected_wq_idx) > 0:
+                wq_other_score = np.sum(water_score[selected_wq_idx], axis=(0, 1))
+                wq_other_val = np.mean(n_w_x[selected_wq_idx], axis=(0, 1))
+            else:
+                F_dim = n_w_x.shape[-1]
+                wq_other_score = np.zeros(F_dim)
+                wq_other_val = np.zeros(F_dim)
+
+
+            # 取出city节点的分数，先根据IG分数绝对值进行筛选，对筛选后的绝对值做平均
+            node_imp_dyn = np.sum(attr_c_dyn, axis=(1, 2))
+            node_imp_static = np.sum(attr_c_static, axis=1)
+            # 筛选出IG分数大于1e-6的节点，然后取并集，
+            selected_dyn_nodes = np.where(node_imp_dyn > threshold)[0]
+            selected_static_nodes = np.where(node_imp_static > threshold)[0]
+            selected_all_cities = np.union1d(selected_dyn_nodes, selected_static_nodes)
+            # 取出筛选后的节点的IG分数
+            filtered_c_dyn_ig = city_dyn_score[selected_all_cities]
+            filtered_c_dyn_val = n_c_dyn[selected_all_cities]
+            filtered_c_static_ig = city_static_score[selected_all_cities]
+            filtered_c_static_val = n_c_static[selected_all_cities]
+            sample_importance = np.concatenate([wq_self_score,wq_other_score, np.sum(filtered_c_dyn_ig, axis=(0, 1)),
+                            np.sum(filtered_c_static_ig, axis=0)])
+            sample_value = np.concatenate([wq_self_val,wq_other_val, np.mean(filtered_c_dyn_val, axis=(0, 1)),
+                            np.mean(filtered_c_static_val, axis=0)])
+            all_value.append(sample_value)
+            all_importance.append(sample_importance)
+
+            global_water_attr += attr_w
+            global_city_dyn_attr += attr_c_dyn
+            global_city_static_attr += attr_c_static
+
+
+        results = {
+            'water': global_water_attr/num_sample,
+            'city_dyn': global_city_dyn_attr/num_sample,
+            'city_static':global_city_static_attr/num_sample}
+        sample_importance = {
+            "value": np.stack(all_value),
+            "importance": np.stack(all_importance),}
+
+        return results,sample_importance
 
     def plot_node_pie(self,results,target_idx,saveFolder):
         total_importance = np.sum(results['water'])+np.sum(results['city_dyn'])+np.sum(results['city_static'])

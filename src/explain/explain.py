@@ -1,27 +1,21 @@
 import os
 import torch
 import pickle
-import numpy as np
-import pandas as pd
-from data.load_data import build_edge_index_dict
-from local_explainer import LocalExplanation
+from local_explainer import  LocalExplanation
+from configs import config as cfg
+from src.utils.load_data import load_siteInfo, load_timeSeries, load_data
 
+water_nm,city_nm, num_cities,num_water_nodes = load_siteInfo(cfg)
+full_date_range, DATE_LENGTH = load_timeSeries(cfg)
+_, _, _, _, edge_attr, edge_index_dict = load_data(cfg,full_date_range,DATE_LENGTH,num_cities)
 
-dir_info = {
-    'city_to_water': r'D:\Program\HTGNN\data/info_data/city_to_water.csv',
-    'water_to_water':  r'D:\Program\HTGNN\data/info_data/water_to_water.csv',
-    'city_to_city': r'D:\Program\HTGNN\data/info_data/city_to_city.csv',
-    'water_points':  r'D:\Program\HTGNN\data/info_data/water_points.csv',
-    'city_points': r'D:\Program\HTGNN\data/info_data/city_points.csv'}
-
-dataset = torch.load(r'D:\Program\HTGNN\data\dataset\Test_dataset.pt')
-model = torch.load(r'D:\Program\HTGNN\Random42OutPut\GruHANModel_B32_H16_L4_NL2_NH4_lr0.0010\best_model.pt',weights_only=False)
-edge_index_dict = build_edge_index_dict(dir_info)
+dataset = torch.load(r'D:\Program\HTGNN\data\dataset\ALL_dataset.pt')
+model = torch.load(r'D:\Program\HTGNN\TestPut\GruEAHGTModel_B12_H16_L4_NL2_NH4_lr0.0010\best_model.pt',weights_only=False)
 target_var_idx=0        # 0:TP 1:TN
 features_nm_dict = {
     'water':["TP"],
     'city_dyn':['Pre','Pet','TEMP'],
-    'city_static':['Cropland','Forest','Impervious','Other',"In_TP",'NDVI','Light']
+    'city_static':['Cropland','Impervious','FA',"F_TP",'P_gdp','Pop','NDVI','NTL']
 }
 explain_vis = 'vis_explain'
 os.makedirs(explain_vis, exist_ok=True)
@@ -34,12 +28,17 @@ os.makedirs(result_folder, exist_ok=True)
         'city_static': global_c_static_imp,         城市节点社会经济指标重要性[Nc,Fcs]
     }
 '''
+# explainer = GlobalExplanation(model, dataset, edge_index_dict, target_var_idx, device='cuda')
+# results_global, sample= explainer.explain()
+
 ######################### 分站点重要性 #########################
 for target_idx in range(14):
     local_explainer = LocalExplanation(model, dataset, edge_index_dict,target_idx, target_var_idx,device='cuda')
-    results_node = local_explainer.explain()
+    results_node,sample_importance = local_explainer.explain()
     with open(os.path.join(result_folder, f"results_{target_idx}.pkl"), "wb") as f:
         pickle.dump(results_node, f)
+    with open(os.path.join(result_folder, f"importance_{target_idx}.pkl"), "wb") as f:
+        pickle.dump(sample_importance, f)
     # with open(os.path.join(result_folder, f"results_{target_idx}.pkl"), "rb") as f:
     #     results_node = pickle.load(f)
     local_explainer.plot_node_pie(results_node,target_idx,explain_vis)

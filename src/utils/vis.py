@@ -3,10 +3,18 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 
+def set_custom_fonts():
+    plt.style.use('seaborn-v0_8-white')
+    plt.rcParams['font.family'] = ['Times New Roman', 'SimSun']
+    plt.rcParams['axes.unicode_minus'] = False
+    plt.rcParams['mathtext.fontset'] = 'stix'
+    plt.rcParams['mathtext.default'] = 'regular'
+# 设置绘图字体
+set_custom_fonts()
 
-plt.style.use('seaborn-v0_8-white')
-plt.rcParams['font.family'] = ['Times New Roman',"SimSun",'SimHei']
-plt.rcParams['axes.unicode_minus'] = False
+
+
+
 def visualize_loss(saveFolder,lossFun_name):
     """
     读取 run_printLoss.csv 并绘制 Loss 曲线

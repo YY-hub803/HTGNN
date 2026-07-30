@@ -4,6 +4,17 @@ import numpy as np
 import pandas as pd
 from collections import defaultdict
 from ..utils.crit import R2,NSE,RMSE,KGE,MAE
+import glob
+
+
+def load_latest_model(DIR_OUTPUT):
+    model_files = glob.glob(os.path.join(DIR_OUTPUT, "*.pt"))
+    if not model_files:
+        raise FileNotFoundError("未能找到训练保存的模型文件，请检查 train_G 是否成功保存。")
+    latest_model_path = max(model_files, key=os.path.getmtime)
+    model_raw = torch.load(latest_model_path,weights_only=False)
+    return model_raw
+
 
 def evaluate(model,Test,y_mean, y_std,
             site_names, num_nodes,Target_Name,
@@ -12,13 +23,9 @@ def evaluate(model,Test,y_mean, y_std,
     model.eval()
     model_name = model.__class__.__name__
     nF = len(Target_Name)
-    if saveFolder is not None:
-        if not os.path.exists(saveFolder):
-            os.makedirs(saveFolder)
-        runFile = os.path.join(saveFolder, f'{model_name}_perform.csv')
-        rf = open(runFile, 'w')
-    else:
-        rf = None
+
+    runFile = os.path.join(saveFolder, f'{model_name}_perform.csv')
+    rf = open(runFile, 'w')
 
     # 追踪当前滑窗在测试集时间轴上的绝对起始位置
     time_to_preds = defaultdict(list)
@@ -30,18 +37,13 @@ def evaluate(model,Test,y_mean, y_std,
         for batch in Test:
             batch_y = batch['water'].y
             batch = batch.to(device)
+            current_batch_size = batch.batch_size
             if return_semantic_attn:
-                '''semantic_attn 是一个字典
-                {'water':[('water','flows_to','water'),('city','impact','water')]
-                'city':[('water','impact','city')]}     忽略城市节点的权重，这是为了方便模型计算而加上的反向边
-                '''
                 output,semantic_attn = model(batch,return_attention=True)
-                weights = semantic_attn['water'].cpu().numpy()
-                all_semantic_weights.append(weights)
+                all_semantic_weights.append(semantic_attn)
             else:
                 output = model(batch)
 
-            current_batch_size = int(batch['water'].batch.max()) + 1
             output = output.view(current_batch_size, num_nodes, pred_len,nF).detach().cpu().numpy()
             y = batch_y.view(current_batch_size, num_nodes, pred_len,nF).numpy()
             for b in range(current_batch_size):
@@ -57,8 +59,8 @@ def evaluate(model,Test,y_mean, y_std,
                         time_to_trues[target_time_idx] = y[b, :, step]
                 # 当前窗口处理完毕，绝对索引步进 1
                 global_window_idx += 1
-    if return_semantic_attn:
-        avg_semantic_weights = np.mean(all_semantic_weights, axis=0)
+
+
 
     final_preds_list = []
     final_trues_list = []
@@ -137,32 +139,9 @@ def evaluate(model,Test,y_mean, y_std,
                 if rf: rf.write(logStr_overall + '\n')
 
     if rf: rf.close()
+    np.save("all_attn.npy", all_semantic_weights)
+    print(f"已保存注意力权重到 {os.getcwd()}")
     if return_semantic_attn:
-        return output_df, true_df,avg_semantic_weights
+        return output_df, true_df,all_semantic_weights
     else:
         return output_df, true_df
-
-
-def analyze_semantic_attention(model, Test, device='cuda'):
-    """
-    提取并可视化 HAN 模型的语义级注意力权重 (Semantic Attention Weights)
-    """
-    model.eval()
-
-    # 用于累加测试集中所有样本的语义权重
-    all_semantic_weights = []
-    print("🔍 开始提取不同语义(Meta-path)的注意力权重...")
-    with torch.no_grad():
-        for batch in Test:
-            batch = batch.to(device)
-            # 接收前向传播暴露出来的权重
-            out, semantic_attn = model(batch,return_semantic_attn=True)
-            # semantic_attn 通常是一个形状为 [num_meta_paths] 的 Tensor
-            # 代表各个关系在当前 batch 中的相对重要性 (加和为 1.0)
-            weights = semantic_attn.cpu().numpy()
-            all_semantic_weights.append(weights)
-    # 计算所有测试集样本的平均语义权重
-    avg_semantic_weights = np.mean(all_semantic_weights, axis=0)
-
-    print("\n✅ 提取完成！")
-    return avg_semantic_weights
