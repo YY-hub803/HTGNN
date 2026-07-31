@@ -10,16 +10,16 @@ full_date_range, DATE_LENGTH = load_timeSeries(cfg)
 _, _, _, _, edge_attr, edge_index_dict = load_data(cfg,full_date_range,DATE_LENGTH,num_cities)
 
 dataset = torch.load(r'D:\Program\HTGNN\data\dataset\ALL_dataset.pt')
-model = torch.load(r'D:\Program\HTGNN\TestPut\GruEAHGTModel_B12_H16_L4_NL2_NH4_lr0.0010\best_model.pt',weights_only=False)
+model = torch.load(r'D:\Program\HTGNN\TestPut\GruEAHGTModel_B8_H32_L12_NL2_NH4_lr0.0010\best_model.pt',weights_only=False)
 target_var_idx=0        # 0:TP 1:TN
 features_nm_dict = {
-    'water':["TP"],
-    'city_dyn':['Pre','Pet','TEMP'],
-    'city_static':['Cropland','Impervious','FA',"F_TP",'P_gdp','Pop','NDVI','NTL']
+    'water':["TP","TN"],
+    'city_dyn':['Pre','TEMP'],
+    'city_static':['Cropland','Impervious','FA',"F_TP",'P_gdp','Pop','NTL']
 }
-explain_vis = 'vis_explain'
+explain_vis = '730vis_explain'
 os.makedirs(explain_vis, exist_ok=True)
-result_folder = 'result'
+result_folder = '730result'
 os.makedirs(result_folder, exist_ok=True)
 '''
     results = {

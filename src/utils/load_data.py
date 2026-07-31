@@ -26,11 +26,11 @@ def load_se_data(dir_x,dir_c,num_sites, full_date_range,num_static_features=6):
     date_length = len(full_date_range)
     c_dyn = load_timeseries(dir_x, date_length)
 
-    X_city_static_annual = np.zeros((date_length,num_sites,num_static_features))
+    X_city_static_annual = np.zeros((num_sites,date_length,num_static_features))
     c_static = load_attribute(dir_c)
     for t in range(date_length):
         current_year = str(full_date_range[t].year)
-        X_city_static_annual[t] =  c_static[current_year]
+        X_city_static_annual[:,t,:] =  c_static[current_year]
 
     c_dyn = torch.tensor(c_dyn, dtype=torch.float32)
     c_annual_static = torch.tensor(X_city_static_annual, dtype=torch.float32)

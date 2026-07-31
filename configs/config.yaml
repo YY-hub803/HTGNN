@@ -73,9 +73,9 @@ train_config:
   freq: 7D
   model: GruEAHGTModel
   epochs: 400
-  hidden: 16
-  batch: 12
-  history: 4
+  hidden: 32
+  batch: 8
+  history: 12
   pred: 1
   num_heads: 4
   num_layers: 2
@@ -83,5 +83,5 @@ train_config:
   loss_fun: RMSE
   lr: 0.001
   weights: True
-  train_ratio: 0.6
-  val_ratio: 0.2
+  train_ratio: 0.7
+  val_ratio: 0.15

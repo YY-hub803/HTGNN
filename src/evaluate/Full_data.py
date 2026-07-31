@@ -55,7 +55,7 @@ def create_sliding_windows(data_tple,window_size,pred_len):
         xs.append(X[:,t:t+window_size,:])
         ys.append(Y[:,t+window_size,:])
         xs_city.append(x_city[:,t:t+window_size,:])
-        xs_static.append(x_static[t+window_size])
+        xs_static.append(x_static[:,t:t+window_size,:])
         edge_attr_seq.append(edge_attr[:,t:t+window_size,:])
     X_seq = torch.stack(xs)
     Y_seq = torch.stack(ys)

@@ -19,11 +19,7 @@ def split_dataset(window_input):
     def get_train_data():
         train_data = {}
         for name, value in zip(var_name,clone_data.values()):
-            if name == 'x_static':
-                train_data[f'{name}_train'] = value[:TRAIN_END]
-            else:
-                train_data[f'{name}_train'] = value[:,:TRAIN_END,:]
-
+            train_data[f'{name}_train'] = value[:,:TRAIN_END,:]
         return train_data
     train_data = get_train_data()
 
@@ -51,10 +47,7 @@ def split_dataset(window_input):
         for split in ['train','val','test']:
             start, end = split_ranges[split]
             for name, value in zip(var_name, normalized_data.values()):
-                if name == 'x_static':
-                    data_splits[f'{split}_{name}'] = value[start:end]
-                else:
-                    data_splits[f'{split}_{name}'] = value[:,start:end,:]
+                data_splits[f'{split}_{name}'] = value[:,start:end,:]
 
         return data_splits
     data_splits = get_splits_data()
@@ -86,7 +79,7 @@ def create_sliding_windows(data_splits,window_size,pred_len):
             xs.append(X[:,t:t+window_size,:])
             ys.append(Y[:,t+window_size,:])
             xs_city.append(x_city[:,t:t+window_size,:])
-            xs_static.append(x_static[t+window_size])
+            xs_static.append(x_static[:,t:t+window_size,:])
             edge_attr_seq.append(edge_attr[:,t:t+window_size,:])
         X_seq = torch.stack(xs)
         Y_seq = torch.stack(ys)

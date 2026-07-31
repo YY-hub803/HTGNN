@@ -10,8 +10,8 @@ from configs import config as cfg
 from src.utils.load_data import load_data,load_siteInfo,load_timeSeries
 
 
-TRAIN_RATIO = 0.6
-VAL_RATIO = 0.2
+TRAIN_RATIO = 0.7
+VAL_RATIO = 0.15
 
 set_seeds(cfg.get("train_config")["seed"])
 trainModel,Loss,DEVICE,DIR_MODEL,DIR_OUTPUT,VIS_FOLDER = set_all(cfg)

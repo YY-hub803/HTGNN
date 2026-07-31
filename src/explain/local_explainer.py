@@ -194,7 +194,7 @@ class LocalExplanation:
             # IG分数
             water_score = attributions[0].squeeze(0).cpu().detach().numpy()  # 【N,T,F】
             city_dyn_score = attributions[1].squeeze(0).cpu().detach().numpy()  # [N,T,F]
-            city_static_score = attributions[2].squeeze(0).cpu().detach().numpy()  # [N,F]
+            city_static_score = attributions[2].squeeze(0).cpu().detach().numpy()  # [N,T,F]
             n_w_x = w_x.cpu().squeeze(0).detach().numpy()
             n_c_dyn = c_dyn.cpu().squeeze(0).detach().numpy()
             n_c_static = c_static.cpu().squeeze(0).detach().numpy()
@@ -220,7 +220,7 @@ class LocalExplanation:
 
             # 取出city节点的分数，先根据IG分数绝对值进行筛选，对筛选后的绝对值做平均
             node_imp_dyn = np.sum(attr_c_dyn, axis=(1, 2))
-            node_imp_static = np.sum(attr_c_static, axis=1)
+            node_imp_static = np.sum(attr_c_static, axis=(1, 2))
             # 筛选出IG分数大于1e-6的节点，然后取并集，
             selected_dyn_nodes = np.where(node_imp_dyn > threshold)[0]
             selected_static_nodes = np.where(node_imp_static > threshold)[0]
@@ -231,9 +231,9 @@ class LocalExplanation:
             filtered_c_static_ig = city_static_score[selected_all_cities]
             filtered_c_static_val = n_c_static[selected_all_cities]
             sample_importance = np.concatenate([wq_self_score,wq_other_score, np.sum(filtered_c_dyn_ig, axis=(0, 1)),
-                            np.sum(filtered_c_static_ig, axis=0)])
+                            np.sum(filtered_c_static_ig, axis=(0, 1))])
             sample_value = np.concatenate([wq_self_val,wq_other_val, np.mean(filtered_c_dyn_val, axis=(0, 1)),
-                            np.mean(filtered_c_static_val, axis=0)])
+                            np.mean(filtered_c_static_val, axis=(0, 1))])
             all_value.append(sample_value)
             all_importance.append(sample_importance)
 
@@ -255,8 +255,8 @@ class LocalExplanation:
     def plot_node_pie(self,results,target_idx,saveFolder):
         total_importance = np.sum(results['water'])+np.sum(results['city_dyn'])+np.sum(results['city_static'])
         water_pct = np.sum(results['water'],axis=(1,2))/total_importance
-        meteo_dyn_pct = np.sum(results['city_dyn'][:, :, 0:3], axis=(1, 2)) / total_importance
-        city_static_pct = np.sum(np.sum(results['city_static'],axis=1)+np.sum(results['city_dyn'][:,:,3:5],axis=(1,2)))/total_importance
+        meteo_dyn_pct = np.sum(results['city_dyn'][:, :, 0:2], axis=(1, 2)) / total_importance
+        city_static_pct = np.sum(np.sum(results['city_static'],axis=(1, 2))+np.sum(results['city_dyn'][:,:,2:],axis=(1,2)))/total_importance
         self_pct = water_pct[target_idx]
         other_water_pct = np.sum(water_pct)-self_pct
         meteo_pct = np.sum(meteo_dyn_pct)
@@ -317,8 +317,8 @@ class LocalExplanation:
         colors = []
         result_importance = {
             'water': np.sum(results['water'],axis=(0,1)),
-            'city_dyn':np.sum(results['city_dyn'][:,:,0:3],axis=(0,1)),
-            'city_static':np.hstack([np.sum(results['city_static'],axis=0),np.sum(results['city_dyn'][:,:,3:],axis=(0,1))]),
+            'city_dyn':np.sum(results['city_dyn'][:,:,0:2],axis=(0,1)),
+            'city_static':np.hstack([np.sum(results['city_static'],axis=(0,1)),np.sum(results['city_dyn'][:,:,2:],axis=(0,1))]),
         }
         categories = ['Water', 'Meteo', 'Socioeconomic']
         category_colors = ['#4A5A6A', '#2E86AB', '#B00000']

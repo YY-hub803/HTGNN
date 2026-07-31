@@ -1,5 +1,3 @@
-from typing import Dict, Any
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -21,7 +19,7 @@ class GruEAHGTModel(nn.Module):
 
         self.edge_index_dict = kwargs.get('edge_index_dict')
         self.output_size = kwargs.get('output_size', 1)  
-        self.hidden_size = kwargs.get('hidden_size', 64)
+        self.hidden_size = kwargs.get('hidden_size', 32)
 
         # ==============================
         # 1. feature encoder
@@ -38,9 +36,9 @@ class GruEAHGTModel(nn.Module):
         # 2. temporal encoder
         # ==============================
         # city temporal GRU
-        self.city_gru_cell = nn.GRUCell(input_size=self.hidden_size, hidden_size=self.hidden_size)  
+        self.city_gru_cell = nn.GRUCell(input_size=self.hidden_size, hidden_size=self.hidden_size)
         # water temporal GRU
-        self.water_gru_cell = nn.GRUCell(input_size=self.hidden_size, hidden_size=self.hidden_size)  
+        self.water_gru_cell = nn.GRUCell(input_size=self.hidden_size, hidden_size=self.hidden_size)
 
         # ==============================
         # 3. HGT spatial propagation
@@ -106,7 +104,7 @@ class GruEAHGTModel(nn.Module):
             # ------------------------------
             # 1. city temporal encoding
             # ------------------------------
-            city_input = x_city_emb[:, time_step, :]+city_static_emb
+            city_input = x_city_emb[:, time_step, :]+city_static_emb[:, time_step, :]
             h_city = self.city_gru_cell(city_input, h_city)
 
             # ------------------------------
