@@ -18,14 +18,14 @@ trainModel,Loss,DEVICE,DIR_MODEL,DIR_OUTPUT,VIS_FOLDER = set_all(cfg)
 # ---------------------Load Data------------------------
 water_nm,city_nm, num_cities,num_water_nodes = load_siteInfo(cfg)
 full_date_range, DATE_LENGTH = load_timeSeries(cfg)
-X, Y, X_city, X_city_static, edge_attr, edge_index_dict = load_data(cfg,full_date_range,DATE_LENGTH,num_cities)
+X, Y, X_city, X_city_static, edge_attr_dict, edge_index_dict = load_data(cfg,full_date_range,DATE_LENGTH,num_cities)
 
 # ---------------------- 创建数据集 -------------------------
 TRAIN_END = int(DATE_LENGTH * TRAIN_RATIO)
 VAL_END = int(DATE_LENGTH * VAL_RATIO)
 test_date_range = full_date_range[TRAIN_END + VAL_END + cfg.get("train_config")['history']:,]
 
-window_input = (X,Y,X_city,X_city_static,edge_attr,TRAIN_RATIO,VAL_RATIO,)
+window_input = (X,Y,X_city,X_city_static,edge_attr_dict,TRAIN_RATIO,VAL_RATIO,)
 
 Sample_data,data_splits, train_stats=get_windows(window_input,cfg)
 
@@ -45,6 +45,7 @@ edge_feat_dims = {}
 for edge_type in sample_data.edge_types:
     if 'edge_attr' in sample_data[edge_type]:
         edge_feat_dims[edge_type] = sample_data[edge_type].edge_attr.shape[-1]
+
 
 model = trainModel(
     water_dyn_feat=water_dyn_feat,

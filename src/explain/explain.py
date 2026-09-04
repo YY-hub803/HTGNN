@@ -10,16 +10,16 @@ full_date_range, DATE_LENGTH = load_timeSeries(cfg)
 _, _, _, _, edge_attr, edge_index_dict = load_data(cfg,full_date_range,DATE_LENGTH,num_cities)
 
 dataset = torch.load(r'D:\Program\HTGNN\data\dataset\ALL_dataset.pt')
-model = torch.load(r'D:\Program\HTGNN\TestPut\GruEAHGTModel_B8_H32_L12_NL2_NH4_lr0.0010\best_model.pt',weights_only=False)
-target_var_idx=0        # 0:TP 1:TN
+model = torch.load(r'D:\Program\HTGNN\OutPut18\GruEAHGTModel_B8_H32_L12_NL2_NH4_lr0.0010\best_model.pt',weights_only=False)
+target_var_idx=1        # 0:TP 1:TN
 features_nm_dict = {
     'water':["TP","TN"],
     'city_dyn':['Pre','TEMP'],
-    'city_static':['Cropland','Impervious','FA',"F_TP",'P_gdp','Pop','NTL']
+    'city_static':['ALP','ISA','FA',"FERT",'GDPpc','Pop','NTL']
 }
-explain_vis = '730vis_explain'
+explain_vis = '830vis_explain_TN'
 os.makedirs(explain_vis, exist_ok=True)
-result_folder = '730result'
+result_folder = '830result_TN'
 os.makedirs(result_folder, exist_ok=True)
 '''
     results = {
@@ -32,7 +32,7 @@ os.makedirs(result_folder, exist_ok=True)
 # results_global, sample= explainer.explain()
 
 ######################### 分站点重要性 #########################
-for target_idx in range(14):
+for target_idx in range(18):
     local_explainer = LocalExplanation(model, dataset, edge_index_dict,target_idx, target_var_idx,device='cuda')
     results_node,sample_importance = local_explainer.explain()
     with open(os.path.join(result_folder, f"results_{target_idx}.pkl"), "wb") as f:

@@ -3,6 +3,8 @@
 *.csv
 *.txt
 *.png
+*.pkl
+*.npy
 # --- ºöÂÔÎÄ¼ş¼Ğ ----
 .idea/
 *_data/

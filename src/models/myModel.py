@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
+from .Prediction_Head import Attention
 from .gru_model import GRULayer
 from .gnn_model import EAHGTLayer
 from torch_geometric.nn import GATConv
@@ -71,6 +73,7 @@ class GruEAHGTModel(nn.Module):
                 edge_attr_dict[edge_type] = batch_data[edge_type].edge_attr[:, time_step, :]
             else:
                 edge_attr_dict[edge_type] = batch_data[edge_type].edge_attr
+
         return edge_attr_dict, edge_index_dict
 
     def forward(self, batch_data, return_attention=False):
@@ -95,6 +98,7 @@ class GruEAHGTModel(nn.Module):
         # ==================================
         # temporal loop
         # ==================================
+        Attention_list = []
         for time_step in range(seq_len):
             # ------------------------------
             # 0. edge_attr_dict
@@ -134,6 +138,7 @@ class GruEAHGTModel(nn.Module):
                             edge_idx.detach().cpu().numpy(),  # [2, E]
                             alpha.detach().cpu().numpy()  # [E, heads]
                         )
+                    Attention_list.append(attn_dict)
                 else:
                     hgt_out = conv_layer(hgt_out, edge_index_dict, edge_attr_dict)
 
@@ -149,6 +154,6 @@ class GruEAHGTModel(nn.Module):
         h_water = self.layer_norm(h_water)
         pred = self.predictor(h_water)
         if return_attention:
-            return pred.view(-1, self.output_size), attn_dict
+            return pred.view(-1, self.output_size), Attention_list
         else:
             return pred.view(-1, self.output_size)

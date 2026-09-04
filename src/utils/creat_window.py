@@ -2,13 +2,16 @@ import torch
 import json
 
 def split_dataset(window_input):
-    X, Y, X_city, X_city_static, edge_attr, TRAIN_RATIO, VAL_RATIO = window_input
+    X, Y, X_city, X_city_static, edge_attr_dict, TRAIN_RATIO, VAL_RATIO = window_input
 
     DATA_LENGTH = X.shape[1]
     TRAIN_END = int(DATA_LENGTH * TRAIN_RATIO)
     VAL_END = TRAIN_END + int(DATA_LENGTH * VAL_RATIO)
-    data = (X, Y, X_city, X_city_static, edge_attr)
+    data = (X, Y, X_city, X_city_static, edge_attr_dict[('water','flows_to','water')])
     var_name = ('x', 'y', 'x_city', 'x_static', 'edge_attr')
+    ## 边静态特征单独标准化
+    e_static_mean = edge_attr_dict[('city', 'impact', 'water')].mean(dim=0, keepdim=True)
+    e_static_std = edge_attr_dict[('city', 'impact', 'water')].std(dim=0, keepdim=True)+1e-8
 
     def clone_data():
         clone_data = {}
@@ -30,6 +33,8 @@ def split_dataset(window_input):
             train_stats[f'{name}_std'] = (value.std(dim=(0,1), keepdim=True)+1e-8)
         return train_stats
     train_stats = get_stats()
+    train_stats['edge_staticAttr_mean'],train_stats['edge_staticAttr_std']= e_static_mean,e_static_std
+
     def get_normalized_data():
         normalized_data = {}
         for name, value in zip(var_name,clone_data.values()):
@@ -51,6 +56,9 @@ def split_dataset(window_input):
 
         return data_splits
     data_splits = get_splits_data()
+    data_splits[f'edge_staticAttr'] = (edge_attr_dict[('city', 'impact', 'water')] - train_stats[
+        f'edge_staticAttr_mean']) / train_stats[f'edge_staticAttr_std']
+
     print(f"切分完成: 训练集 {TRAIN_END} 条, 验证集 {VAL_END - TRAIN_END} 条, 测试集 {DATA_LENGTH - VAL_END} 条")
 
     def save_train_stats(train_stats, save_path='data/dataset/train_stats.json'):
@@ -92,6 +100,7 @@ def create_sliding_windows(data_splits,window_size,pred_len):
         Sample_data[split + '_x_city'] = X_city_seq
         Sample_data[split + '_x_static'] = X_static_seq
         Sample_data[split + '_edge_attr'] = edge_attr_seq
+        Sample_data['edge_staticAttr'] = data_splits['edge_staticAttr']
     print(f"滑动窗口生成完毕！")
     return Sample_data
 

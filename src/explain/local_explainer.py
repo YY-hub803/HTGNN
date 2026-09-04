@@ -156,6 +156,10 @@ class LocalExplanation:
         all_value = list()
         all_importance = list()
 
+        # 城市节点动态的IG分数，用于分析空间作用关系
+        city_pollution = list()
+
+
         threshold = 1e-6
         num_sample = len(self.data)
         for sample in tqdm(self.data, desc=f"站点 {self.target_water_idx} 全局分析"):
@@ -203,6 +207,8 @@ class LocalExplanation:
             attr_c_dyn = np.abs(city_dyn_score)
             attr_c_static = np.abs(city_static_score)
 
+            all_pollution_score = np.concatenate([city_dyn_score[:,:,2:],city_static_score],axis=2)
+            city_pollution.append(all_pollution_score)
             # 取出目标节点自身特征的分数，，上游水质节点特征的分数，，city节点特征的分数
             # 取出目标节点自身特征的分数，，上游水质节点特征的分数,对时间序列求平均
             wq_self_score = np.sum(water_score[self.target_water_idx],axis=0)
@@ -248,7 +254,8 @@ class LocalExplanation:
             'city_static':global_city_static_attr/num_sample}
         sample_importance = {
             "value": np.stack(all_value),
-            "importance": np.stack(all_importance),}
+            "importance": np.stack(all_importance),
+            "city_score": np.stack(city_pollution)}
 
         return results,sample_importance
 

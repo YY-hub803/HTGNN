@@ -12,7 +12,7 @@ data_dirs:
   ea: ${base_dir}/data/EA_data
 
 # 输出目录
-output_dir: ${base_dir}/TestPut
+output_dir: ${base_dir}/OutPut18
 
 # ==================== 文件路径配置 ====================
 
@@ -27,7 +27,7 @@ wq_y:
 
 # 社会经济数据路径
 se_x:
-  x_pre: ${data_dirs.se}/input_xforce_pre.csv
+  x_pre: ${data_dirs.se}/input_xforce_prcp.csv
   x_temp: ${data_dirs.se}/input_xforce_temp.csv
   x_Light: ${data_dirs.se}/input_xforce_Light.csv
 
@@ -41,6 +41,8 @@ se_c:
 ea_config:
   e_maxLevel: ${data_dirs.ea}/input_edge_MaxT_diff.csv
   e_minLevel: ${data_dirs.ea}/input_edge_MinT_diff.csv
+  e_static: ${data_dirs.ea}/input_edge_static.csv
+  e_cityW: ${data_dirs.ea}/input_edge_cityWeight.csv
 
 # 图结构信息路径
 info_config:

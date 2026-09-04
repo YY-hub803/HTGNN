@@ -4,7 +4,7 @@ from torch.utils.data import Dataset
 from torch_geometric.loader import DataLoader
 
 class HeteroDataset(Dataset):
-    def __init__(self, x_water_seq, y_water_seq, x_city_dyn_seq,x_city_static,edge_attr, edge_index_dict):
+    def __init__(self, x_water_seq, y_water_seq, x_city_dyn_seq,x_city_static,edge_attr,edge_staticAttr, edge_index_dict):
         # [Samples, num_sites, seq_len, dyn_features]
         self.x_water = x_water_seq
         self.y_water = y_water_seq
@@ -12,8 +12,9 @@ class HeteroDataset(Dataset):
         self.x_city = x_city_dyn_seq
         # [num_city, static_features]
         self.x_city_static = x_city_static
-        self.edge_attr = edge_attr
 
+        self.edge_attr = edge_attr
+        self.edge_static = edge_staticAttr
         self.edge_index_dict = edge_index_dict
         # 提前提取节点数量
         self.num_water_nodes = x_water_seq.size(1)
@@ -28,10 +29,11 @@ class HeteroDataset(Dataset):
             data[edge_type].edge_index = edge_index.clone()
             if edge_type == ('water', 'flows_to', 'water') :
                 data[edge_type].edge_attr = self.edge_attr[idx]
+            elif edge_type == ('city', 'impact', 'water') :
+                data[edge_type].edge_attr = self.edge_static
             else:
                 num_edges = edge_index.size(1)
-                data[edge_type].edge_attr = torch.ones(num_edges, 1,
-                                                    device=self.x_water.device)
+                data[edge_type].edge_attr = torch.ones(num_edges, 1,device=self.x_water.device,dtype=torch.float32)
         return data
 
     def __getitem__(self, idx):
@@ -59,6 +61,7 @@ def get_set(Sample_data,edge_index_dict):
             Sample_data[f'{split}_x_city'],
             Sample_data[f'{split}_x_static'],
             Sample_data[f'{split}_edge_attr'],
+            Sample_data["edge_staticAttr"],
             edge_index_dict=edge_index_dict)
     Train,Val,Test = dataset_dict['train'],dataset_dict['val'],dataset_dict['test']
     return Train,Val,Test

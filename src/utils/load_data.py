@@ -1,7 +1,6 @@
 import pandas as pd
 import numpy as np
 import torch
-from sympy.physics.units import current
 from torch_geometric.utils import to_undirected
 from src.utils.utils import load_timeseries, load_attribute
 
@@ -38,14 +37,19 @@ def load_se_data(dir_x,dir_c,num_sites, full_date_range,num_static_features=6):
 
 def load_ea_data(dir,full_date_range):
     date_length = len(full_date_range)
-    e_dyn = load_timeseries(dir, date_length)
-    if dir.get("e_static"):
-        e_static = pd.read_csv(dir["e_static"], delimiter=",", skiprows=1).to_numpy()
-        edge_attr = np.concatenate((e_dyn,e_static), axis=2)
-    else:
-        edge_attr = e_dyn
-    edge_attr = torch.tensor(edge_attr, dtype=torch.float32)
-    return edge_attr
+    new_dir = dict(list(dir.items())[:2])
+
+    edge_attr_dict = {}
+    e_dyn = torch.from_numpy(load_timeseries(new_dir, date_length)).float()
+    e_static = torch.from_numpy(pd.read_csv(dir["e_static"], delimiter=",").to_numpy())[: ,None,:].expand(-1, e_dyn.shape[1], -1).float()
+    edge_attr_water = torch.concatenate((e_dyn, e_static), dim=2)
+    edge_attr_dict[('water', 'flows_to', 'water')] = edge_attr_water
+
+    edge_city_water = torch.from_numpy(pd.read_csv(dir["e_cityW"], delimiter=",").to_numpy()).float()
+    edge_attr_dict[('city', 'impact', 'water')] = edge_city_water
+
+
+    return edge_attr_dict
 
 def load_edge_index(path,is_undirected=False):
     df = pd.read_csv(path)
@@ -100,8 +104,8 @@ def load_data(cfg,full_date_range,date_length,num_cities):
 
     X_city,X_city_static = load_se_data(cfg.get("se_x"),cfg.get("se_c"),num_cities,full_date_range)
 
-    edge_attr = load_ea_data(cfg.get("ea_config"),full_date_range)
+    edge_attr_dict = load_ea_data(cfg.get("ea_config"),full_date_range)
 
     edge_index_dict = build_edge_index_dict(cfg.get("info_config"))
 
-    return X, Y, X_city, X_city_static, edge_attr, edge_index_dict
+    return X, Y, X_city, X_city_static, edge_attr_dict, edge_index_dict

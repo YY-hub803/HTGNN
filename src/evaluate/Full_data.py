@@ -15,7 +15,7 @@ json_path = r'D:\Program\HTGNN\data\dataset\train_stats.json'
 
 set_seeds(cfg.get("train_config")["seed"])
 trainModel,Loss,DEVICE,DIR_MODEL,MODEL_PATH,_ = set_all(cfg)
-OUTPUT_DIR = os.path.join(os.getcwd(),"output")
+OUTPUT_DIR = os.path.join(os.getcwd(),"output18")
 check_folder(OUTPUT_DIR)
 DIR_OUTPUT = os.path.join(OUTPUT_DIR,DIR_MODEL)
 check_folder(DIR_OUTPUT)
@@ -24,7 +24,7 @@ check_folder(VIS_FOLDER)
 # ---------------------Load Data------------------------
 water_nm,city_nm, num_cities,num_water_nodes = load_siteInfo(cfg)
 full_date_range, DATE_LENGTH = load_timeSeries(cfg)
-X, Y, X_city, X_city_static, edge_attr, edge_index_dict = load_data(cfg,full_date_range,DATE_LENGTH,num_cities)
+X, Y, X_city, X_city_static, edge_attr_dict, edge_index_dict = load_data(cfg,full_date_range,DATE_LENGTH,num_cities)
 
 # ---------------------- 加载数据 --------------------------
 
@@ -38,7 +38,8 @@ X_norm = (X-stats_tensor['x_mean'])/stats_tensor['x_std']
 Y_norm = (Y-stats_tensor['y_mean'])/stats_tensor['y_std']
 X_city_norm = (X_city-stats_tensor['x_city_mean'])/stats_tensor['x_city_std']
 X_city_static_norm = (X_city_static-stats_tensor['x_static_mean'])/stats_tensor['x_static_std']
-edge_attr_norm = (edge_attr-stats_tensor['edge_attr_mean'])/stats_tensor['edge_attr_std']
+edge_attr_norm = (edge_attr_dict[('water', 'flows_to', 'water')]-stats_tensor['edge_attr_mean'])/stats_tensor['edge_attr_std']
+edge_static_norm = (edge_attr_dict[('city', 'impact', 'water')]-stats_tensor['edge_staticAttr_mean'])/stats_tensor['edge_staticAttr_std']
 
 window_input = (X_norm,Y_norm,X_city_norm,X_city_static_norm,edge_attr_norm)
 window_size, pred_len = cfg.get("train_config")['history'],cfg.get("train_config")['pred']
@@ -73,6 +74,7 @@ dataset = HeteroDataset(
     X_city_seq,
     X_static_seq,
     edge_attr_seq,
+    edge_static_norm,
     edge_index_dict=edge_index_dict,
     )
 torch.save(dataset,r'D:\Program\HTGNN\data\dataset\ALL_dataset.pt')
@@ -88,7 +90,7 @@ for edge_type in sample_data.edge_types:
     if 'edge_attr' in sample_data[edge_type]:
         edge_feat_dims[edge_type] = sample_data[edge_type].edge_attr.shape[-1]
 
-data_loader= DataLoader(dataset, batch_size=cfg.get("train_config")['batch'], shuffle=False)
+data_loader= DataLoader(dataset, batch_size=cfg.get("train_config")['batch'], shuffle=False,drop_last=True)
 
 model = trainModel(
     water_dyn_feat=water_dyn_feat,
